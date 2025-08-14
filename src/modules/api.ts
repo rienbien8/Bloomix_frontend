@@ -1,20 +1,27 @@
-import type { Spot, Content, Oshi } from './types'
+import type { Spot, Content, Oshi } from "./types";
 
-const BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') || ''
+const BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || "";
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {
-    headers: { 'Accept': 'application/json' },
-  })
-  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`)
-  return res.json() as Promise<T>
+    headers: { Accept: "application/json" },
+  });
+  if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+  return res.json() as Promise<T>;
 }
 
 // エンドポイント（FastAPI: /api/v1/...）
 export const Api = {
-  spots: () => get<Spot[]>(`/api/v1/spots`),
+  // 渋谷周辺のデフォルトbbox（緯度35.65-35.67、経度139.69-139.72）
+  spots: (bbox?: string) => {
+    const defaultBbox = "35.65,139.69,35.67,139.72";
+    const bboxParam = bbox || defaultBbox;
+    return get<{ count: number; items: Spot[] }>(
+      `/api/v1/spots?bbox=${bboxParam}`
+    );
+  },
   oshis: () => get<Oshi[]>(`/api/v1/oshis`),
   contents: () => get<Content[]>(`/api/v1/contents`),
   // ルートは今回のホーム画面では未使用だが、将来のために定義
   routes: () => get<any[]>(`/api/v1/routes`),
-}
+};

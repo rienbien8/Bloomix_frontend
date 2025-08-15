@@ -13,5 +13,6 @@
     "strict": true,
     "types": []
   },
-  "include": ["src"]
+  "include": ["src", "next-env.d.ts", "**/*.ts", "**/*.tsx", "env.d.ts"]
 }
+

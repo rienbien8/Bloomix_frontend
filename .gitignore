@@ -1,3 +1,22 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.env
+
+# Node
+node_modules/
+.next/
+.env.local
+
+# その他
+*.log
+.DS_Store
+
+# 機密証明書ファイル
+*.pem
+
 # Dependencies
 node_modules/
 npm-debug.log*
@@ -61,3 +80,10 @@ jspm_packages/
 
 # dotenv environment variables file
 .env 
+
+.venv
+
+# Next.js
+.next/
+out/
+.next/cache/

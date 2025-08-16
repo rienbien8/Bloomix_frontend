@@ -1,5 +1,7 @@
+"use client";
+
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import Header from "../components/Header";
 import SpotCard from "../components/SpotCard";
 import BottomNav from "../components/BottomNav";
@@ -10,7 +12,7 @@ import type { Spot } from "../modules/types";
 export default function SpotsList() {
   const [spots, setSpots] = useState<Spot[] | null>(null);
   const [loading, setLoading] = useState(true);
-  const navigate = useNavigate();
+  const router = useRouter();
 
   useEffect(() => {
     // バックエンドのGET /api/v1/spotsを呼び出し
@@ -34,7 +36,7 @@ export default function SpotsList() {
         <div className="max-w-md mx-auto px-4 pt-4">
           <div className="flex items-center gap-3 mb-6">
             <button
-              onClick={() => navigate(-1)}
+              onClick={() => router.back()}
               className="text-gray-600 hover:text-gray-800"
             >
               ← 戻る

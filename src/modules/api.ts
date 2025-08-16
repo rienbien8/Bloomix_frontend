@@ -1,6 +1,6 @@
 import type { Spot, Content, Oshi } from "./types";
 
-const BASE = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, "") || "";
+const BASE = process.env.NEXT_PUBLIC_API_BASE_URL?.replace(/\/$/, "") || "";
 
 async function get<T>(path: string): Promise<T> {
   const res = await fetch(`${BASE}${path}`, {

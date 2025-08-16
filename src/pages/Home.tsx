@@ -1,5 +1,7 @@
+"use client";
+
 import { useEffect, useState } from "react";
-import { useNavigate } from "react-router-dom";
+import { useRouter } from "next/navigation";
 import Header from "../components/Header";
 import HeroMapCard from "../components/HeroMapCard";
 import SectionHeader from "../components/SectionHeader";
@@ -13,7 +15,7 @@ import type { Spot, Content } from "../modules/types";
 export default function Home() {
   const [spots, setSpots] = useState<Spot[] | null>(null);
   const [contents, setContents] = useState<Content[] | null>(null);
-  const navigate = useNavigate();
+  const router = useRouter();
 
   useEffect(() => {
     // 並列で呼び出し。失敗時はモックで補う
@@ -36,7 +38,7 @@ export default function Home() {
 
         <SectionHeader
           title="近くのスポット"
-          onMore={() => navigate("/spots")}
+          onMore={() => router.push("/spots")}
         />
         <div className="max-w-md mx-auto px-4 space-y-3">
           {(spots ?? Array.from({ length: 3 })).map((s, idx) =>

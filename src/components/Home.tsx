@@ -2,12 +2,12 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import Header from "../components/Header";
-import HeroMapCard from "../components/HeroMapCard";
-import SectionHeader from "../components/SectionHeader";
-import SpotCard from "../components/SpotCard";
-import ContentCard from "../components/ContentCard";
-import BottomNav from "../components/BottomNav";
+import Header from "./Header";
+import HeroMapCard from "./HeroMapCard";
+import SectionHeader from "./SectionHeader";
+import SpotCard from "./SpotCard";
+import ContentCard from "./ContentCard";
+import BottomNav from "./BottomNav";
 import { Api } from "../modules/api";
 import { mockSpots, mockContents } from "../modules/mock";
 import type { Spot, Content } from "../modules/types";

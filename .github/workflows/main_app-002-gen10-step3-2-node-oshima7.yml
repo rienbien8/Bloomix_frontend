@@ -33,7 +33,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: node-app
-          path: frontend_deploy/Bloomix_frontend-main #追加
+          path: . #追加
 
   deploy:
     runs-on: ubuntu-latest
@@ -44,7 +44,6 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: node-app
-          path: ./deploy-folder #追加
       
       - name: 'Deploy to Azure Web App'
         id: deploy-to-webapp
@@ -52,7 +51,8 @@ jobs:
         with:
           app-name: 'app-002-gen10-step3-2-node-oshima7'
           slot-name: 'Production'
-          package: ./deploy-folder #追加
+          package: .
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F171040774C24E55BCE2630B11408DEE }}
+
 
 

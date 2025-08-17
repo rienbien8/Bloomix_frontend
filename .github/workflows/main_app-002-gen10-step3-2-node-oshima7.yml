@@ -51,8 +51,9 @@ jobs:
         with:
           app-name: 'app-002-gen10-step3-2-node-oshima7'
           slot-name: 'Production'
-          package: .
+          package: frontend_deploy/Bloomix_frontend-main
           publish-profile: ${{ secrets.AZUREAPPSERVICE_PUBLISHPROFILE_F171040774C24E55BCE2630B11408DEE }}
+
 
 
 

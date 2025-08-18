@@ -1,4 +1,4 @@
-import type { Spot, Content, Oshi } from "./types";
+import type { Spot, Content, Oshi, ContentItem } from "./types";
 
 const BASE = process.env.NEXT_PUBLIC_API_BASE_URL_URL?.replace(/\/$/, "") || "";
 
@@ -25,3 +25,11 @@ export const Api = {
   // ルートは今回のホーム画面では未使用だが、将来のために定義
   routes: () => get<any[]>(`/api/v1/routes`),
 };
+
+export async function getContents(): Promise<ContentItem[]> {
+  const response = await fetch("/api/contents");
+  if (!response.ok) {
+    throw new Error("Failed to fetch contents");
+  }
+  return response.json();
+}

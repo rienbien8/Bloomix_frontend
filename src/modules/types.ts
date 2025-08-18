@@ -37,3 +37,13 @@ export type Content = {
   updated_at?: string
   duration_min?: number | null
 }
+
+export type ContentItem = {
+  id: number;
+  title: string;
+  description?: string;
+  duration_sec?: number;
+  spot_id: number;
+  oshi_id?: number;
+  url?: string; // オプショナルプロパティとして追加
+};

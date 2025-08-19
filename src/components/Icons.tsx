@@ -26,11 +26,11 @@ export const Compass = (p: Props) => (
   </svg>
 )
 
-export const Plus = (p: Props) => (
-  <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...p}>
-    <path d="M19 11H13V5h-2v6H5v2h6v6h2v-6h6z"/>
-  </svg>
-)
+// export const Plus = (p: Props) => (
+//   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...p}>
+//     <path d="M19 11H13V5h-2v6H5v2h6v6h2v-6h6z"/>
+//   </svg>
+// )
 
 export const Bell = (p: Props) => (
   <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" {...p}>

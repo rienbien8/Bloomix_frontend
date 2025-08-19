@@ -1,10 +1,13 @@
 export default function Header() {
   return (
-    <header className="sticky top-0 z-20 bg-gradient-to-b from-brand to-brand-light text-white px-4 pt-4 pb-3 shadow">
-      <div className="max-w-md mx-auto">
-        <h1 className="text-lg font-bold tracking-wide">推しスポNavi</h1>
-        <p className="text-xs opacity-90">あなたの推し旅をドライブで楽しもう</p>
+    <header className="sticky top-0 z-20 bg-gradient-to-b from-brand-sky to-brand-sunrise text-white px-4 pt-4 pb-3">
+      <div className="max-w-md mx-auto flex flex-col items-center">
+        <img
+          src="https://raw.githubusercontent.com/rienbien8/Bloomix_frontend/main/τotoi.png"
+          alt="Totoi Drive ロゴ"
+          className="h-12 mb-2"
+        />
       </div>
     </header>
-  )
+  );
 }

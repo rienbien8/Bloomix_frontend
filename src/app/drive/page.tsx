@@ -23,7 +23,7 @@ const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 const DEFAULT_CENTER = { lat: 35.6809591, lng: 139.7673068 }; // 東京駅
 const DEFAULT_ZOOM = 13;
 const AUTOCOMPLETE_RADIUS_M = 3000;
-const BUFFER_M_DEFAULT = 1000;
+const BUFFER_M_DEFAULT = 10000; // 一時的に5kmに拡大してテスト
 const USER_ID_DEFAULT = 1;
 const TOLERANCE_MIN_DEFAULT = 3;
 
@@ -136,6 +136,34 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
 
   const selectedRouteObj = routes.find((r) => r.type === selectedRoute) || null;
+
+  // -----------------------------
+  // Update route line colors based on selection
+  // -----------------------------
+  const updateRouteLineColors = () => {
+    // 各ラインが存在する場合のみ更新
+    if (polyFastRef.current) {
+      const isSelected = selectedRoute === "fastest";
+      polyFastRef.current.setOptions({
+        strokeColor: isSelected ? "#3b82f6" : "#9ca3af", // blue or gray
+        strokeOpacity: isSelected ? 0.9 : 0.4,
+        strokeWeight: isSelected ? 6 : 4,
+      });
+    }
+    if (polyEcoRef.current) {
+      const isSelected = selectedRoute === "eco";
+      polyEcoRef.current.setOptions({
+        strokeColor: isSelected ? "#22c55e" : "#9ca3af", // green or gray
+        strokeOpacity: isSelected ? 0.9 : 0.4,
+        strokeWeight: isSelected ? 5 : 3,
+      });
+    }
+  };
+
+  // selectedRouteが変更された時にラインの色を更新
+  useEffect(() => {
+    updateRouteLineColors();
+  }, [selectedRoute]);
 
   // -----------------------------
   // Load Google Maps
@@ -375,20 +403,67 @@ export default function Page() {
         polyFastRef.current = new (google.maps as any).Polyline({
           path: geom.encoding.decodePath(pathFast),
           map,
-          strokeColor: "#3b82f6", // blue
-          strokeOpacity: 0.9,
-          strokeWeight: 6,
+          strokeColor: selectedRoute === "fastest" ? "#3b82f6" : "#9ca3af", // blue or gray
+          strokeOpacity: selectedRoute === "fastest" ? 0.9 : 0.4,
+          strokeWeight: selectedRoute === "fastest" ? 6 : 4,
+          clickable: true, // クリック可能にする
+        });
+
+        // クリックイベントリスナーを追加
+        polyFastRef.current.addListener("click", () => {
+          setSelectedRoute("fastest");
+        });
+
+        // ホバー効果を追加
+        polyFastRef.current.addListener("mouseover", () => {
+          if (selectedRoute !== "fastest") {
+            polyFastRef.current.setOptions({
+              strokeColor: "#3b82f6",
+              strokeOpacity: 0.7,
+              strokeWeight: 7,
+            });
+          }
+        });
+
+        polyFastRef.current.addListener("mouseout", () => {
+          updateRouteLineColors();
         });
       }
       if (pathEco) {
         polyEcoRef.current = new (google.maps as any).Polyline({
           path: geom.encoding.decodePath(pathEco),
           map,
-          strokeColor: "#22c55e", // green
-          strokeOpacity: 0.9,
-          strokeWeight: 5,
+          strokeColor: selectedRoute === "eco" ? "#22c55e" : "#9ca3af", // green or gray
+          strokeOpacity: selectedRoute === "eco" ? 0.9 : 0.4,
+          strokeWeight: selectedRoute === "eco" ? 5 : 3,
+          clickable: true, // クリック可能にする
+        });
+
+        // クリックイベントリスナーを追加
+        polyEcoRef.current.addListener("click", () => {
+          setSelectedRoute("eco");
+        });
+
+        // ホバー効果を追加
+        polyEcoRef.current.addListener("mouseover", () => {
+          if (selectedRoute !== "eco") {
+            polyEcoRef.current.setOptions({
+              strokeColor: "#22c55e",
+              strokeOpacity: 0.7,
+              strokeWeight: 6,
+            });
+          }
+        });
+
+        polyEcoRef.current.addListener("mouseout", () => {
+          updateRouteLineColors();
         });
       }
+
+      // ライン作成後に色を更新
+      setTimeout(() => {
+        updateRouteLineColors();
+      }, 100);
     } catch (e) {
       console.error(e);
       setError("ルートの取得に失敗しました。");
@@ -628,12 +703,16 @@ export default function Page() {
                     onClick={() => setSelectedRoute(r.type)}
                     className={`flex-1 p-4 rounded-xl shadow-card border-2 transition-colors ${
                       selectedRoute === r.type
-                        ? "border-blue-500 bg-blue-50"
-                        : "border-gray-200 bg-white"
+                        ? r.type === "fastest"
+                          ? "border-blue-500 bg-blue-50"
+                          : "border-green-500 bg-green-50"
+                        : "border-gray-300 bg-gray-50 opacity-60"
                     }`}
                   >
                     <div className="text-sm text-gray-600 mb-1">
-                      {r.type === "fastest" ? "時間を優先する" : "コンテンツを楽しむ"}
+                      {r.type === "fastest"
+                        ? "時間を優先する"
+                        : "コンテンツを楽しむ"}
                     </div>
                     <div className="text-xl font-bold text-gray-900">
                       {toMinLabel(r.duration_min)}

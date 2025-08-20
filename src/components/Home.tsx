@@ -11,6 +11,7 @@ import BottomNav from "./BottomNav";
 import { Api } from "../modules/api";
 import { mockSpots, mockContents } from "../modules/mock";
 import type { Spot, Content } from "../modules/types";
+import MapEmbed from "./MapEmbed";
 
 export default function Home() {
   const [spots, setSpots] = useState<Spot[] | null>(null);
@@ -37,7 +38,9 @@ export default function Home() {
       <Header /></div>
       {/* ヘッダー分の余白を追加 */}
       <main className="scroll-smooth pt-32">
-        <HeroMapCard />
+      <div className="max-w-md mx-auto px-4 mb-6">
+          <MapEmbed height="320px" rounded="1rem" />
+        </div>
 
         <SectionHeader
           title="近くのスポット"

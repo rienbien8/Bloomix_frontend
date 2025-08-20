@@ -9,6 +9,8 @@
 /* global google */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
+import Header from "../../components/Header";
+import BottomNav from "../../components/BottomNav";
 
 // =============================
 // Config
@@ -494,358 +496,199 @@ export default function Page() {
   // Render
   // -----------------------------
   return (
-    <div style={{ position: "relative", height: "100dvh", width: "100%" }}>
-      {/* Header/Footer は共通コンポーネントをここでラップしてください */}
+    <div className="min-h-screen bg-gray-50 pb-24 relative">
+      {/* ヘッダーを固定表示 */}
+      <div className="fixed top-0 left-0 w-full z-10">
+        <Header />
+      </div>
 
-      {/* Top bar */}
-      <div
-        style={{
-          position: "absolute",
-          top: 12,
-          left: 12,
-          right: 12,
-          zIndex: 20,
-          display: "flex",
-          gap: 8,
-        }}
-      >
-        <div
-          style={{
-            flex: 1,
-            background: "rgba(255,255,255,0.92)",
-            borderRadius: 16,
-            padding: 8,
-            boxShadow: "0 4px 16px rgba(0,0,0,0.1)",
-          }}
-        >
-          <input
-            placeholder="目的地を検索（例: 東京タワー）"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            style={{
-              width: "100%",
-              border: "none",
-              outline: "none",
-              background: "transparent",
-              fontSize: 14,
-              padding: "6px 8px",
-            }}
+      {/* ヘッダー分の余白を追加 */}
+      <main className="scroll-smooth pt-32">
+        {/* 検索バー */}
+        <div className="max-w-md mx-auto px-4 mb-4">
+          <div className="relative">
+            <input
+              placeholder="目的地を入力…"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
+            />
+            {predictions.length > 0 && (
+              <div className="absolute top-full left-0 right-0 mt-1 bg-white rounded-xl shadow-lg border border-gray-200 max-h-60 overflow-auto z-20">
+                {predictions.map((p) => (
+                  <button
+                    key={p.place_id}
+                    onClick={() => selectPrediction(p)}
+                    className="w-full text-left px-4 py-3 hover:bg-gray-50 border-b border-gray-100 last:border-b-0"
+                  >
+                    {p.description}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* マップ */}
+        <div className="max-w-md mx-auto px-4 mb-4">
+          <div
+            ref={mapDivRef}
+            className="w-full h-80 rounded-xl shadow-card overflow-hidden"
           />
-          {predictions.length > 0 && (
-            <div
-              style={{
-                marginTop: 6,
-                maxHeight: 280,
-                overflow: "auto",
-                background: "#fff",
-                borderRadius: 12,
-                boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-              }}
-            >
-              {predictions.map((p) => (
+        </div>
+
+        {/* ルート選択カード */}
+        {routes.length > 0 && (
+          <div className="max-w-md mx-auto px-4 mb-4">
+            <div className="flex gap-3">
+              {routes.map((r) => (
                 <button
-                  key={p.place_id}
-                  onClick={() => selectPrediction(p)}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    padding: "8px 12px",
-                    border: "none",
-                    background: "transparent",
-                    cursor: "pointer",
-                  }}
+                  key={r.type}
+                  onClick={() => setSelectedRoute(r.type)}
+                  className={`flex-1 p-4 rounded-xl shadow-card border-2 transition-colors ${
+                    selectedRoute === r.type
+                      ? "border-blue-500 bg-blue-50"
+                      : "border-gray-200 bg-white"
+                  }`}
                 >
-                  {p.description}
+                  <div className="text-sm text-gray-600 mb-1">
+                    {r.type === "fastest" ? "最短" : "エコ"}
+                  </div>
+                  <div className="text-xl font-bold text-gray-900">
+                    {toMinLabel(r.duration_min)}
+                  </div>
+                  <div className="text-sm text-gray-600">
+                    {r.distance_km.toFixed(1)} km
+                  </div>
+                  {r.advisory?.fuel_consumption_ml != null && (
+                    <div className="text-xs text-gray-500 mt-1">
+                      燃料: {Math.round(r.advisory.fuel_consumption_ml)} ml
+                    </div>
+                  )}
                 </button>
               ))}
             </div>
-          )}
-        </div>
-        <button
-          onClick={fetchRoutes}
-          style={{
-            borderRadius: 16,
-            padding: "8px 14px",
-            background: "#111",
-            color: "#fff",
-          }}
-        >
-          2ルート取得
-        </button>
-      </div>
+          </div>
+        )}
 
-      {/* Map */}
-      <div ref={mapDivRef} style={{ height: "100%", width: "100%" }} />
-
-      {/* Route cards */}
-      <div
-        style={{
-          position: "absolute",
-          left: 12,
-          right: 12,
-          bottom: 160,
-          zIndex: 20,
-          display: "flex",
-          gap: 12,
-          justifyContent: "center",
-        }}
-      >
-        {routes.map((r) => (
-          <button
-            key={r.type}
-            onClick={() => setSelectedRoute(r.type)}
-            style={{
-              minWidth: 160,
-              padding: "10px 14px",
-              borderRadius: 14,
-              boxShadow: "0 8px 24px rgba(0,0,0,0.12)",
-              border:
-                selectedRoute === r.type
-                  ? "2px solid #111"
-                  : "1px solid #e5e7eb",
-              background: "#fff",
-            }}
-            title={r.type}
-          >
-            <div style={{ fontSize: 12, color: "#6b7280" }}>
-              {r.type === "fastest" ? "最短" : "エコ"}
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 700 }}>
-              {toMinLabel(r.duration_min)}
-            </div>
-            <div style={{ fontSize: 12, color: "#6b7280" }}>
-              {r.distance_km.toFixed(1)} km
-            </div>
-            {r.advisory?.fuel_consumption_ml != null && (
-              <div style={{ fontSize: 12, color: "#6b7280" }}>
-                燃料: {Math.round(r.advisory.fuel_consumption_ml)} ml
-              </div>
-            )}
-          </button>
-        ))}
-      </div>
-
-      {/* Bottom panel */}
-      <div
-        style={{
-          position: "absolute",
-          left: 0,
-          right: 0,
-          bottom: 0,
-          zIndex: 20,
-        }}
-      >
-        <div
-          style={{
-            margin: 12,
-            padding: 12,
-            borderRadius: 16,
-            background: "rgba(255,255,255,0.96)",
-            boxShadow: "0 -8px 24px rgba(0,0,0,0.08)",
-          }}
-        >
-          {/* Actions */}
-          <div style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
+        {/* アクションボタン */}
+        <div className="max-w-md mx-auto px-4 mb-4">
+          <div className="flex flex-wrap gap-2">
+            <button
+              onClick={fetchRoutes}
+              disabled={!destMarkerRef.current}
+              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              ルート取得
+            </button>
             <button
               onClick={fetchAlongSpots}
               disabled={!routes.length}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                background: "#0ea5e9",
-                color: "#fff",
-                border: "none",
-              }}
+              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              途中スポット表示（±{BUFFER_M_DEFAULT}m）
+              沿線スポット表示
             </button>
             <button
               onClick={proposePlaylist}
               disabled={!selectedRouteObj}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                background: "#22c55e",
-                color: "#fff",
-                border: "none",
-              }}
+              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              プレイリスト提案（
-              {selectedRouteObj
-                ? toMinLabel(selectedRouteObj.duration_min)
-                : "-"}
-              ）
-            </button>
-            <button
-              onClick={() => alert("デモではここで案内開始します。")}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                background: "#111",
-                color: "#fff",
-                border: "none",
-              }}
-            >
-              案内開始（デモ）
+              プレイリスト提案
             </button>
           </div>
+        </div>
 
-          {/* Waypoints chips */}
-          {waypoints.length > 0 && (
-            <div
-              style={{
-                marginTop: 12,
-                display: "flex",
-                gap: 8,
-                flexWrap: "wrap",
-              }}
-            >
+        {/* 経由地チップ */}
+        {waypoints.length > 0 && (
+          <div className="max-w-md mx-auto px-4 mb-4">
+            <div className="flex flex-wrap gap-2">
               {waypoints.map((w, i) => (
                 <span
                   key={i}
-                  style={{
-                    background: "#eef2ff",
-                    color: "#3730a3",
-                    padding: "4px 8px",
-                    borderRadius: 9999,
-                    fontSize: 12,
-                  }}
+                  className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs"
                 >
                   WP{i + 1}: {w.lat.toFixed(3)},{w.lng.toFixed(3)}
                 </span>
               ))}
             </div>
-          )}
-
-          {/* Along-route list */}
-          <div style={{ marginTop: 10 }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>
-              沿線のフォロー推しスポット{" "}
-              {alongSpots.length ? `(${alongSpots.length}件)` : ""}
-            </div>
-            {loadingAlong ? (
-              <div>取得中…</div>
-            ) : alongSpots.length === 0 ? (
-              <div style={{ color: "#6b7280", fontSize: 13 }}>
-                未表示。ルート取得後に「途中スポット表示」を押してください。
-              </div>
-            ) : (
-              <div
-                style={{
-                  maxHeight: 220,
-                  overflow: "auto",
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                {alongSpots.map((s) => (
-                  <div
-                    key={s.id}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: 8,
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 12,
-                    }}
-                  >
-                    <div>
-                      <div style={{ fontWeight: 600 }}>{s.name}</div>
-                      <div style={{ fontSize: 12, color: "#6b7280" }}>
-                        {s.distance_m ? `${Math.round(s.distance_m)} m` : ""}
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => addWaypoint(s)}
-                      style={{
-                        padding: "6px 10px",
-                        borderRadius: 8,
-                        background: "#111",
-                        color: "#fff",
-                        border: "none",
-                      }}
-                    >
-                      経由地に追加
-                    </button>
-                  </div>
-                ))}
-              </div>
-            )}
           </div>
+        )}
 
-          {/* Playlist list */}
-          <div style={{ marginTop: 14 }}>
-            <div style={{ fontWeight: 600, marginBottom: 6 }}>
+        {/* 沿線スポットリスト */}
+        {alongSpots.length > 0 && (
+          <div className="max-w-md mx-auto px-4 mb-4">
+            <h3 className="font-semibold text-gray-900 mb-3">
+              沿線のフォロー推しスポット ({alongSpots.length}件)
+            </h3>
+            <div className="space-y-2 max-h-60 overflow-auto">
+              {alongSpots.map((s) => (
+                <div
+                  key={s.id}
+                  className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border border-gray-200"
+                >
+                  <div>
+                    <div className="font-medium text-gray-900">{s.name}</div>
+                    <div className="text-sm text-gray-600">
+                      {s.distance_m ? `${Math.round(s.distance_m)} m` : ""}
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => addWaypoint(s)}
+                    className="px-3 py-1 bg-gray-900 text-white rounded-lg text-xs"
+                  >
+                    経由地に追加
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* プレイリスト */}
+        {playlist.length > 0 && (
+          <div className="max-w-md mx-auto px-4 mb-4">
+            <h3 className="font-semibold text-gray-900 mb-3">
               プレイリスト提案
-            </div>
-            {loadingPlaylist ? (
-              <div>提案中…</div>
-            ) : playlist.length === 0 ? (
-              <div style={{ color: "#6b7280", fontSize: 13 }}>
-                未提案。ルートを選択して「プレイリスト提案」を押してください。
-              </div>
-            ) : (
-              <div
-                style={{
-                  maxHeight: 260,
-                  overflow: "auto",
-                  display: "grid",
-                  gap: 8,
-                }}
-              >
-                {playlist.map((p) => (
-                  <div
-                    key={p.content_id}
-                    style={{
-                      padding: 8,
-                      border: "1px solid #e5e7eb",
-                      borderRadius: 12,
-                    }}
-                  >
-                    <div
-                      style={{
-                        display: "flex",
-                        justifyContent: "space-between",
-                        alignItems: "baseline",
-                      }}
-                    >
-                      <div style={{ fontWeight: 600 }}>
-                        {p.title || `コンテンツ #${p.content_id}`}
-                      </div>
-                      <div style={{ fontSize: 12, color: "#6b7280" }}>
-                        {toMinLabel(p.duration_min)}
-                      </div>
+            </h3>
+            <div className="space-y-2 max-h-60 overflow-auto">
+              {playlist.map((p) => (
+                <div
+                  key={p.content_id}
+                  className="p-3 bg-white rounded-lg shadow-sm border border-gray-200"
+                >
+                  <div className="flex justify-between items-start">
+                    <div className="font-medium text-gray-900 flex-1">
+                      {p.title || `コンテンツ #${p.content_id}`}
                     </div>
-                    {p.lang && (
-                      <div style={{ fontSize: 12, color: "#6b7280" }}>
-                        言語: {p.lang}
-                      </div>
-                    )}
+                    <div className="text-sm text-gray-600 ml-2">
+                      {toMinLabel(p.duration_min)}
+                    </div>
                   </div>
-                ))}
-              </div>
-            )}
+                  {p.lang && (
+                    <div className="text-sm text-gray-600 mt-1">
+                      言語: {p.lang}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
+        )}
 
-          {/* Status & errors */}
-          <div
-            style={{
-              marginTop: 10,
-              display: "flex",
-              justifyContent: "space-between",
-              fontSize: 12,
-              color: "#6b7280",
-            }}
-          >
+        {/* ステータス表示 */}
+        <div className="max-w-md mx-auto px-4 mb-6">
+          <div className="flex justify-between items-center text-xs text-gray-500">
             <div>
               {loadingRoutes && "ルート取得中…"}
-              {error && <span style={{ color: "#dc2626" }}>　{error}</span>}
+              {error && <span className="text-red-600 ml-2">{error}</span>}
             </div>
             <div>{getEnvDisplay()}</div>
           </div>
         </div>
-      </div>
+      </main>
+
+      {/* フッター */}
+      <BottomNav />
     </div>
   );
 }

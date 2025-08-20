@@ -5,7 +5,7 @@ import "../styles.css";
 const inter = Inter({ subsets: ["latin"] });
 
 export const metadata: Metadata = {
-  title: "推しスポNavi",
+  title: "To-toi Drive",
   description: "推しスポットナビゲーションアプリ",
 };
 

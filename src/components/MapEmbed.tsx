@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
+import { LocationIcon } from "./Icons";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -310,9 +311,16 @@ export default function MapEmbed({
             borderRadius: 8,
             border: "1px solid #ccc",
             background: "#f7f7f7",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            minWidth: "40px",
+            height: "36px",
           }}
+          title="現在地に移動"
         >
-          現在地
+        
+          <LocationIcon className="w-4 h-4 text-gray-600" />
         </button>
       </div>
 
@@ -348,6 +356,7 @@ export default function MapEmbed({
         }}
       >
         <div ref={wrapRef} className="absolute inset-0" />
+        
 
         {/* ステータス */}
         <div

@@ -23,7 +23,7 @@ const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 const DEFAULT_CENTER = { lat: 35.6809591, lng: 139.7673068 }; // 東京駅
 const DEFAULT_ZOOM = 13;
 const AUTOCOMPLETE_RADIUS_M = 3000;
-const BUFFER_M_DEFAULT = 10000; // 一時的に5kmに拡大してテスト
+const BUFFER_M_DEFAULT = 10000; // 一時的に10kmに拡大
 const USER_ID_DEFAULT = 1;
 const TOLERANCE_MIN_DEFAULT = 3;
 

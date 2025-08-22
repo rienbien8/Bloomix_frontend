@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import Header from "./Header";
 import HeroMapCard from "./HeroMapCard";
@@ -16,6 +16,8 @@ import MapEmbed from "./MapEmbed";
 export default function Home() {
   const [spots, setSpots] = useState<Spot[] | null>(null);
   const [contents, setContents] = useState<Content[] | null>(null);
+  const [mapCenter, setMapCenter] = useState<{ lat: number; lng: number } | null>(null);
+  const [isInitialLoad, setIsInitialLoad] = useState(true);
   const router = useRouter();
 
   useEffect(() => {
@@ -31,6 +33,29 @@ export default function Home() {
     });
   }, []);
 
+  // 地図の中心位置が変更された時にスポットを再取得（初期表示時と検索時のみ）
+  const handleMapCenterChange = useCallback((center: { lat: number; lng: number }, reason: 'initial' | 'search' | 'move') => {
+    setMapCenter(center);
+    
+    // 初期表示時または検索時のみスポットを再取得
+    if (reason === 'initial' || reason === 'search') {
+      // 地図中心から半径約1kmのBBoxを作成
+      const lat = center.lat;
+      const lng = center.lng;
+      const delta = 0.01; // 約1km
+      const bbox = `${lat - delta},${lng - delta},${lat + delta},${lng + delta}`;
+      
+      Api.spots(bbox).then((response) => {
+        if (response?.items) {
+          setSpots(response.items);
+        }
+      }).catch((error) => {
+        console.warn("スポット取得に失敗:", error);
+        // エラー時は既存のスポットを維持
+      });
+    }
+  }, []);
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       {/* ヘッダーを固定表示 */}
@@ -39,7 +64,11 @@ export default function Home() {
       {/* ヘッダー分の余白を追加 */}
       <main className="scroll-smooth pt-32">
       <div className="max-w-md mx-auto px-4 mb-6">
-          <MapEmbed height="320px" rounded="1rem" />
+          <MapEmbed 
+            height="320px" 
+            rounded="1rem" 
+            onCenterChange={handleMapCenterChange}
+          />
         </div>
 
         <SectionHeader

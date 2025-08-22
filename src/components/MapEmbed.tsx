@@ -147,7 +147,7 @@ export default function MapEmbed({
           bbox,
           origin,
           is_special: specialOnly ? 1 : undefined,
-          limit: 50,
+          limit: 10,
         }
       );
 

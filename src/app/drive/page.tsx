@@ -9,6 +9,7 @@
 /* global google */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
+import { IoLocationSharp } from "react-icons/io5";
 import Header from "../../components/Header";
 import BottomNav from "../../components/BottomNav";
 import { LocationIcon } from "../../components/Icons";
@@ -21,7 +22,7 @@ const API_BASE =
 const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
 const DEFAULT_CENTER = { lat: 35.6809591, lng: 139.7673068 }; // 東京駅
-const DEFAULT_ZOOM = 13;
+const DEFAULT_ZOOM = 11; // より広い範囲を表示するため縮小
 const AUTOCOMPLETE_RADIUS_M = 3000;
 const BUFFER_M_DEFAULT = 10000; // 一時的に10kmに拡大
 const USER_ID_DEFAULT = 1;
@@ -117,6 +118,15 @@ export default function Page() {
     lat: number;
     lng: number;
   } | null>(null);
+  const [searchSuggestions, setSearchSuggestions] = useState<
+    Array<{
+      place_id: string;
+      name: string;
+      address: string;
+      location: { latitude: number; longitude: number };
+    }>
+  >([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const [routes, setRoutes] = useState<RouteData[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<"fastest" | "eco" | null>(
@@ -193,36 +203,12 @@ export default function Page() {
         });
         infoRef.current = new google.maps.InfoWindow();
 
-        // Google Places Autocomplete を初期化
-        if (
-          typeof google !== "undefined" &&
-          google.maps &&
-          google.maps.places
-        ) {
-          const input = document.getElementById(
-            "search-input"
-          ) as HTMLInputElement;
-          if (input) {
-            autocompleteRef.current = new google.maps.places.Autocomplete(
-              input,
-              {
-                types: ["establishment", "geocode"],
-                componentRestrictions: { country: "jp" },
-              }
-            );
-
-            autocompleteRef.current.addListener("place_changed", () => {
-              const place = autocompleteRef.current.getPlace();
-              if (place.geometry && place.geometry.location) {
-                const coords = {
-                  lat: place.geometry.location.lat(),
-                  lng: place.geometry.location.lng(),
-                };
-                handlePlaceSelection(place.name || "選択された場所", coords);
-              }
-            });
-          }
+        // 地図初期化後に現在地マーカーを作成
+        if (currentLocation) {
+          createOriginMarker(currentLocation);
         }
+
+        // Google Places Autocomplete は使用しない
       })
       .catch((e) => {
         console.error(e);
@@ -235,6 +221,25 @@ export default function Page() {
     };
   }, []);
 
+  // 地図外をクリックした時に候補リストを非表示にする
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (
+        !target.closest("#search-input") &&
+        !target.closest(".search-suggestions")
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // -----------------------------
   // 現在地を取得
   const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
@@ -267,27 +272,11 @@ export default function Page() {
       // 地図が初期化済みの場合は中心を更新
       if (mapRef.current) {
         mapRef.current.setCenter(coords);
-        mapRef.current.setZoom(15);
+        mapRef.current.setZoom(13); // より広い範囲を表示
       }
 
       // 現在地マーカーを作成
-      if (originMarkerRef.current) {
-        originMarkerRef.current.setMap(null);
-      }
-
-      originMarkerRef.current = new google.maps.Marker({
-        position: coords,
-        map: mapRef.current,
-        title: "現在地",
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: "#4285F4",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-        },
-      });
+      createOriginMarker(coords);
     } catch (error) {
       console.error("位置情報の取得に失敗しました:", error);
       setError(
@@ -296,6 +285,31 @@ export default function Page() {
     } finally {
       setLoadingLocation(false);
     }
+  };
+
+  // 現在地マーカーを作成する関数
+  const createOriginMarker = (coords: { lat: number; lng: number }) => {
+    if (!mapRef.current) return;
+
+    // 既存の現在地マーカーを削除
+    if (originMarkerRef.current) {
+      originMarkerRef.current.setMap(null);
+    }
+
+    // 新しい現在地マーカーを作成
+    originMarkerRef.current = new google.maps.Marker({
+      position: coords,
+      map: mapRef.current,
+      title: "現在地",
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: "#4285F4",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 2,
+      },
+    });
   };
 
   // 場所選択の処理
@@ -318,20 +332,178 @@ export default function Page() {
       position: coords,
       title: name,
       icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: "#EA4335",
-        fillOpacity: 1,
-        strokeColor: "#ffffff",
-        strokeWeight: 2,
+        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#DC2626"/>
+            <path d="M12 11.5c-1.12-2.5-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#DC2626"/>
+          </svg>
+        `)}`,
+        scaledSize: new google.maps.Size(32, 32),
+        anchor: new google.maps.Point(16, 32),
       },
+    });
+
+    // 目的地マーカーにクリックイベントを追加
+    destMarkerRef.current.addListener("click", () => {
+      if (infoRef.current) {
+        const content = `
+          <div style="min-width: 200px; padding: 16px;">
+            <div style="font-weight: 600; margin-bottom: 8px; color: #333;">
+              ${name}
+            </div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 12px;">
+              ${
+                name.includes("駅") || name.includes("店")
+                  ? name
+                  : `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`
+              }
+            </div>
+            <button 
+              id="go-here-btn"
+              style="
+                width: 100%;
+                padding: 8px 16px;
+                background: #3b82f6;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-weight: 500;
+                cursor: pointer;
+                transition: background 0.2s;
+              "
+              onmouseover="this.style.background='#2563eb'"
+              onmouseout="this.style.background='#3b82f6'"
+            >
+              ここに行く
+            </button>
+          </div>
+        `;
+
+        infoRef.current.setContent(content);
+        infoRef.current.open(map, destMarkerRef.current);
+
+        // ボタンクリックイベントを設定
+        setTimeout(() => {
+          const goHereBtn = document.getElementById("go-here-btn");
+          if (goHereBtn) {
+            goHereBtn.addEventListener("click", () => {
+              fetchRoutes();
+              infoRef.current?.close();
+            });
+          }
+        }, 100);
+      }
     });
 
     // 地図の中心を目的地に設定
     map.setCenter(coords);
-    map.setZoom(15);
+    map.setZoom(13); // より広い範囲を表示
 
     // 検索クエリをクリア
+    setQuery("");
+  };
+
+  // 検索処理
+  const handleSearch = async () => {
+    const searchQuery = query.trim();
+    if (!searchQuery) return;
+
+    // 検索実行時に候補リストを非表示
+    setShowSuggestions(false);
+    setSearchSuggestions([]);
+
+    setError(null);
+    setLoadingRoutes(true);
+
+    try {
+      // Google Maps Places API (search-text)を使用して検索
+      const url = new URL(`${API_BASE}/bff/maps/search-text`);
+      url.searchParams.set("q", searchQuery);
+      url.searchParams.set("language", "ja");
+      url.searchParams.set("region", "JP");
+
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error(`search-text ${res.status}`);
+
+      const data = await res.json();
+
+      if (data.items && data.items.length > 0) {
+        const firstResult = data.items[0];
+        const coords = {
+          lat: firstResult.location.latitude,
+          lng: firstResult.location.longitude,
+        };
+
+        // 検索結果を表示してピンを立てる
+        handlePlaceSelection(
+          firstResult.address || firstResult.name || searchQuery,
+          coords
+        );
+      } else {
+        setError(
+          "検索結果が見つかりませんでした。別のキーワードをお試しください。"
+        );
+      }
+    } catch (error) {
+      console.error("検索エラー:", error);
+      setError("検索に失敗しました。しばらく時間をおいて再度お試しください。");
+    } finally {
+      setLoadingRoutes(false);
+    }
+  };
+
+  // 入力に応じて候補を検索
+  const fetchSearchSuggestions = async (input: string) => {
+    if (input.trim().length < 2) {
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    try {
+      const url = new URL(`${API_BASE}/bff/maps/search-text`);
+      url.searchParams.set("q", input);
+      url.searchParams.set("language", "ja");
+      url.searchParams.set("region", "JP");
+      url.searchParams.set("limit", "5");
+
+      const res = await fetch(url.toString());
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      if (data.items && data.items.length > 0) {
+        setSearchSuggestions(data.items);
+        setShowSuggestions(true);
+      } else {
+        setSearchSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } catch (error) {
+      console.error("候補検索エラー:", error);
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  // 候補選択の処理
+  const handleSuggestionSelect = (suggestion: {
+    place_id: string;
+    name: string;
+    address: string;
+    location: { latitude: number; longitude: number };
+  }) => {
+    const coords = {
+      lat: suggestion.location.latitude,
+      lng: suggestion.location.longitude,
+    };
+
+    // 検索結果を表示してピンを立てる
+    handlePlaceSelection(suggestion.address || suggestion.name, coords);
+
+    // 候補を非表示にしてクエリをクリア
+    setShowSuggestions(false);
+    setSearchSuggestions([]);
     setQuery("");
   };
 
@@ -661,10 +833,45 @@ export default function Page() {
                   id="search-input"
                   placeholder="目的地を入力…"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    fetchSearchSuggestions(e.target.value);
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      handleSearch();
+                    }
+                  }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+                {showSuggestions && (
+                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
+                    {searchSuggestions.map((s) => (
+                      <div
+                        key={s.place_id}
+                        className="p-2 cursor-pointer hover:bg-gray-100"
+                        onClick={() => handleSuggestionSelect(s)}
+                      >
+                        <div className="font-medium">{s.name}</div>
+                        <div className="text-sm text-gray-600">{s.address}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
+              <button
+                onClick={() => {
+                  // 検索ボタンクリック時にも候補リストを非表示
+                  setShowSuggestions(false);
+                  setSearchSuggestions([]);
+                  handleSearch();
+                }}
+                disabled={!query.trim() || loadingRoutes}
+                className="px-4 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                title="検索"
+              >
+                検索
+              </button>
               <button
                 onClick={getCurrentLocation}
                 disabled={loadingLocation}
@@ -732,6 +939,20 @@ export default function Page() {
           </div>
         )}
 
+        {/* ルート未取得時の案内 */}
+        {!routes.length && destMarkerRef.current && (
+          <div className="max-w-md mx-auto px-4 mb-4">
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
+              <div className="text-blue-800 font-medium mb-2">
+                目的地が設定されました
+              </div>
+              <div className="text-blue-600 text-sm">
+                目的地のピンをクリックして「ここに行く」を押すと、ルートが表示されます
+              </div>
+            </div>
+          </div>
+        )}
+
         {/* アクションボタン */}
         <div className="max-w-md mx-auto px-4 mb-4">
           <div className="flex flex-wrap gap-2">
@@ -742,13 +963,7 @@ export default function Page() {
             >
               出発地設定
             </button>
-            <button
-              onClick={fetchRoutes}
-              disabled={!destMarkerRef.current}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              ルート取得
-            </button>
+            {/* ルート取得ボタンは目的地ピンクリックで統合 */}
             <button
               onClick={fetchAlongSpots}
               disabled={!routes.length}

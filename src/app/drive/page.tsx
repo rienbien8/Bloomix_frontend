@@ -10,6 +10,7 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
 import { IoLocationSharp } from "react-icons/io5";
+import { TbLocationFilled } from "react-icons/tb";
 import Header from "../../components/Header";
 import BottomNav from "../../components/BottomNav";
 import { LocationIcon } from "../../components/Icons";
@@ -315,7 +316,8 @@ export default function Page() {
   // 場所選択の処理
   const handlePlaceSelection = (
     name: string,
-    coords: { lat: number; lng: number }
+    coords: { lat: number; lng: number },
+    address?: string // 住所パラメータを追加
   ) => {
     setError(null);
 
@@ -348,34 +350,72 @@ export default function Page() {
       if (infoRef.current) {
         const content = `
           <div style="min-width: 200px; padding: 16px;">
-            <div style="font-weight: 600; margin-bottom: 8px; color: #333;">
-              ${name}
-            </div>
-            <div style="font-size: 12px; color: #666; margin-bottom: 12px;">
-              ${
-                name.includes("駅") || name.includes("店")
-                  ? name
-                  : `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`
-              }
-            </div>
             <button 
               id="go-here-btn"
               style="
                 width: 100%;
-                padding: 8px 16px;
+                padding: 12px 16px;
                 background: #3b82f6;
                 color: white;
                 border: none;
                 border-radius: 8px;
-                font-weight: 500;
+                font-weight: 600;
+                font-size: 14px;
                 cursor: pointer;
                 transition: background 0.2s;
+                margin-bottom: 16px;
               "
               onmouseover="this.style.background='#2563eb'"
               onmouseout="this.style.background='#3b82f6'"
             >
               ここに行く
             </button>
+            <div style="font-weight: 600; margin-bottom: 8px; color: #333; font-size: 14px;">
+              ${name}
+            </div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
+              ${address || `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`}
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+              <button 
+                id="set-origin-btn"
+                style="
+                  flex: 1;
+                  padding: 8px 12px;
+                  background: #f59e0b;
+                  color: white;
+                  border: none;
+                  border-radius: 6px;
+                  font-weight: 500;
+                  font-size: 12px;
+                  cursor: pointer;
+                  transition: background 0.2s;
+                "
+                onmouseover="this.style.background='#d97706'"
+                onmouseout="this.style.background='#f59e0b'"
+              >
+                出発地に設定
+              </button>
+              <button 
+                id="share-btn"
+                style="
+                  flex: 1;
+                  padding: 8px 12px;
+                  background: #10b981;
+                  color: white;
+                  border: none;
+                  border-radius: 6px;
+                  font-weight: 500;
+                  font-size: 12px;
+                  cursor: pointer;
+                  transition: background 0.2s;
+                "
+                onmouseover="this.style.background='#059669'"
+                onmouseout="this.style.background='#10b981'"
+              >
+                共有
+              </button>
+            </div>
           </div>
         `;
 
@@ -385,10 +425,45 @@ export default function Page() {
         // ボタンクリックイベントを設定
         setTimeout(() => {
           const goHereBtn = document.getElementById("go-here-btn");
+          const setOriginBtn = document.getElementById("set-origin-btn");
+          const shareBtn = document.getElementById("share-btn");
+
           if (goHereBtn) {
             goHereBtn.addEventListener("click", () => {
               fetchRoutes();
               infoRef.current?.close();
+            });
+          }
+
+          if (setOriginBtn) {
+            setOriginBtn.addEventListener("click", () => {
+              // 出発地として設定
+              if (mapRef.current) {
+                mapRef.current.setCenter(coords);
+                mapRef.current.setZoom(13);
+                createOriginMarker(coords);
+                setCurrentLocation(coords);
+                setCenter(coords);
+              }
+              infoRef.current?.close();
+            });
+          }
+
+          if (shareBtn) {
+            shareBtn.addEventListener("click", () => {
+              // 共有機能（クリップボードにコピー）
+              const shareText = `${name}\n${
+                address || `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`
+              }`;
+              navigator.clipboard
+                .writeText(shareText)
+                .then(() => {
+                  // 成功メッセージを表示（簡易的な実装）
+                  alert("場所の情報をクリップボードにコピーしました");
+                })
+                .catch(() => {
+                  alert("クリップボードへのコピーに失敗しました");
+                });
             });
           }
         }, 100);
@@ -398,6 +473,23 @@ export default function Page() {
     // 地図の中心を目的地に設定
     map.setCenter(coords);
     map.setZoom(13); // より広い範囲を表示
+
+    // 既存のルートと関連データをクリア
+    setRoutes([]);
+    setSelectedRoute(null);
+    setWaypoints([]);
+    setAlongSpots([]);
+    setPlaylist([]);
+
+    // 既存のポリラインをクリア
+    if (polyFastRef.current) {
+      polyFastRef.current.setMap(null);
+      polyFastRef.current = null;
+    }
+    if (polyEcoRef.current) {
+      polyEcoRef.current.setMap(null);
+      polyEcoRef.current = null;
+    }
 
     // 検索クエリをクリア
     setQuery("");
@@ -437,7 +529,8 @@ export default function Page() {
         // 検索結果を表示してピンを立てる
         handlePlaceSelection(
           firstResult.address || firstResult.name || searchQuery,
-          coords
+          coords,
+          firstResult.address
         );
       } else {
         setError(
@@ -493,18 +586,33 @@ export default function Page() {
     address: string;
     location: { latitude: number; longitude: number };
   }) => {
-    const coords = {
-      lat: suggestion.location.latitude,
-      lng: suggestion.location.longitude,
-    };
+    try {
+      console.log("候補が選択されました:", suggestion); // デバッグログを追加
 
-    // 検索結果を表示してピンを立てる
-    handlePlaceSelection(suggestion.address || suggestion.name, coords);
+      const coords = {
+        lat: suggestion.location.latitude,
+        lng: suggestion.location.longitude,
+      };
 
-    // 候補を非表示にしてクエリをクリア
-    setShowSuggestions(false);
-    setSearchSuggestions([]);
-    setQuery("");
+      console.log("座標:", coords); // 座標の確認
+
+      // 検索結果を表示してピンを立てる
+      handlePlaceSelection(
+        suggestion.address || suggestion.name,
+        coords,
+        suggestion.address
+      );
+
+      // 候補を非表示にしてクエリをクリア
+      setShowSuggestions(false);
+      setSearchSuggestions([]);
+      setQuery("");
+
+      console.log("候補選択処理が完了しました"); // 処理完了の確認
+    } catch (error) {
+      console.error("候補選択処理でエラーが発生しました:", error);
+      setError("候補の選択に失敗しました。再度お試しください。");
+    }
   };
 
   // -----------------------------
@@ -845,14 +953,29 @@ export default function Page() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 {showSuggestions && (
-                  <div className="absolute z-10 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto">
-                    {searchSuggestions.map((s) => (
+                  <div className="absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto search-suggestions">
+                    {searchSuggestions.length > 0 && (
+                      <div className="p-2 bg-gray-100 text-xs text-gray-600 border-b border-gray-200">
+                        候補: {searchSuggestions.length}件
+                      </div>
+                    )}
+                    {searchSuggestions.map((s, index) => (
                       <div
                         key={s.place_id}
-                        className="p-2 cursor-pointer hover:bg-gray-100"
+                        className={`p-3 cursor-pointer hover:bg-gray-50 transition-colors ${
+                          index < searchSuggestions.length - 1
+                            ? "border-b border-gray-200"
+                            : ""
+                        }`}
                         onClick={() => handleSuggestionSelect(s)}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
                       >
-                        <div className="font-medium">{s.name}</div>
+                        <div className="font-medium text-gray-900 mb-1">
+                          {s.name}
+                        </div>
                         <div className="text-sm text-gray-600">{s.address}</div>
                       </div>
                     ))}
@@ -872,24 +995,66 @@ export default function Page() {
               >
                 検索
               </button>
-              <button
-                onClick={getCurrentLocation}
-                disabled={loadingLocation}
-                className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                title="現在地を取得"
-              >
-                <LocationIcon className="w-5 h-5" />
-              </button>
             </div>
           </div>
         </div>
 
         {/* マップ */}
         <div className="max-w-md mx-auto px-4 mb-4">
-          <div
-            ref={mapDivRef}
-            className="w-full h-80 rounded-xl shadow-card overflow-hidden"
-          />
+          <div className="relative">
+            <div
+              ref={mapDivRef}
+              className="w-full h-80 rounded-xl shadow-card overflow-hidden"
+            />
+
+            {/* 現在地ボタン（右下） */}
+            <div
+              className="absolute z-30"
+              style={{
+                bottom: 70,
+                right: 10,
+              }}
+            >
+              <button
+                onClick={() => {
+                  if (!navigator.geolocation || !mapRef.current) return;
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      const lat = pos.coords.latitude;
+                      const lng = pos.coords.longitude;
+                      const coords = { lat, lng };
+
+                      // 地図の中心を現在地に移動
+                      mapRef.current.setCenter(coords);
+                      mapRef.current.setZoom(13);
+
+                      // 現在地マーカーを作成・表示
+                      createOriginMarker(coords);
+                      setCurrentLocation(coords);
+                      setCenter(coords);
+                    },
+                    () => setError("現在地が取得できませんでした"),
+                    { enableHighAccuracy: true, timeout: 5000 }
+                  );
+                }}
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  background: "rgba(255, 255, 255, 0.95)",
+                  border: "1px solid #ddd",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(4, 131, 250, 0.15)",
+                }}
+                title="現在地へ移動"
+              >
+                <TbLocationFilled size={18} color="#4285F4" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ルート選択カード */}
@@ -908,7 +1073,7 @@ export default function Page() {
                   <button
                     key={r.type}
                     onClick={() => setSelectedRoute(r.type)}
-                    className={`flex-1 p-4 rounded-xl shadow-card border-2 transition-colors ${
+                    className={`flex-1 p-0 rounded-xl shadow-card border-2 transition-colors ${
                       selectedRoute === r.type
                         ? r.type === "fastest"
                           ? "border-blue-500 bg-blue-50"
@@ -939,47 +1104,34 @@ export default function Page() {
           </div>
         )}
 
-        {/* ルート未取得時の案内 */}
-        {!routes.length && destMarkerRef.current && (
+        {/* アクションボタン */}
+        {routes.length > 0 && (
           <div className="max-w-md mx-auto px-4 mb-4">
-            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 text-center">
-              <div className="text-blue-800 font-medium mb-2">
-                目的地が設定されました
-              </div>
-              <div className="text-blue-600 text-sm">
-                目的地のピンをクリックして「ここに行く」を押すと、ルートが表示されます
-              </div>
+            <div className="flex flex-wrap gap-2 justify-center">
+              <button
+                onClick={fetchAlongSpots}
+                disabled={!routes.length}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                沿線スポット表示
+              </button>
+              <button
+                onClick={proposePlaylist}
+                disabled={!selectedRouteObj}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                プレイリスト提案
+              </button>
+              <button
+                onClick={() => alert("後日実装予定")}
+                disabled={!selectedRouteObj}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700"
+              >
+                出発
+              </button>
             </div>
           </div>
         )}
-
-        {/* アクションボタン */}
-        <div className="max-w-md mx-auto px-4 mb-4">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={setOriginFromMapClick}
-              className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700"
-              title="地図上をクリックして出発地を設定"
-            >
-              出発地設定
-            </button>
-            {/* ルート取得ボタンは目的地ピンクリックで統合 */}
-            <button
-              onClick={fetchAlongSpots}
-              disabled={!routes.length}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              沿線スポット表示
-            </button>
-            <button
-              onClick={proposePlaylist}
-              disabled={!selectedRouteObj}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              プレイリスト提案
-            </button>
-          </div>
-        </div>
 
         {/* 経由地チップ */}
         {waypoints.length > 0 && (

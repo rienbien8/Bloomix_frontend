@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
-import { LocationIcon } from "./Icons";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -12,6 +11,10 @@ type Props = {
   height?: string; // 例: "320px"
   rounded?: string; // 例: "1rem"
   showSpecialToggle?: boolean;
+  onCenterChange?: (
+    center: { lat: number; lng: number },
+    reason: "initial" | "search" | "move"
+  ) => void;
 };
 
 async function apiGet<T>(
@@ -42,6 +45,7 @@ export default function MapEmbed({
   height = "320px",
   rounded = "1rem",
   showSpecialToggle = true,
+  onCenterChange,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
@@ -71,13 +75,17 @@ export default function MapEmbed({
         const google = (window as any).google as typeof window.google;
         mapRef.current = new google.maps.Map(wrapRef.current, {
           center: { lat: 35.659, lng: 139.7 }, // 渋谷近辺
-          zoom: 15,
+          zoom: 13, // 車移動を前提として適度な範囲を表示
           mapTypeControl: false,
           streetViewControl: false,
           fullscreenControl: false,
         });
         infoRef.current = new google.maps.InfoWindow();
         setMapsReady(true);
+        // 初期位置をコールバックで通知
+        if (onCenterChange) {
+          onCenterChange({ lat: 35.659, lng: 139.7 }, "initial");
+        }
       })
       .catch((e) => {
         console.error(e);
@@ -106,7 +114,7 @@ export default function MapEmbed({
             lat: pos.coords.latitude,
             lng: pos.coords.longitude,
           });
-          mapRef.current!.setZoom(15);
+          mapRef.current!.setZoom(13); // 車移動を前提として適度な範囲を表示
           setTimeout(loadSpots, 400);
         },
         () => setTimeout(loadSpots, 400),
@@ -122,7 +130,7 @@ export default function MapEmbed({
       markersRef.current = [];
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapsReady, specialOnly]);
+  }, [mapsReady, specialOnly, onCenterChange]);
 
   async function loadSpots() {
     try {
@@ -139,7 +147,7 @@ export default function MapEmbed({
           bbox,
           origin,
           is_special: specialOnly ? 1 : undefined,
-          limit: 50,
+          limit: 10,
         }
       );
 
@@ -246,26 +254,15 @@ export default function MapEmbed({
         mapRef.current
       ) {
         mapRef.current.setCenter({ lat, lng });
-        mapRef.current.setZoom(15);
+        mapRef.current.setZoom(13); // 車移動を前提として適度な範囲を表示
+        // 検索後にコールバックを呼び出し
+        if (onCenterChange) {
+          onCenterChange({ lat, lng }, "search");
+        }
       }
     } catch (e) {
       console.error(e);
     }
-  }
-
-  function recenterToHere() {
-    if (!navigator.geolocation || !mapRef.current) return;
-    navigator.geolocation.getCurrentPosition(
-      (pos) => {
-        mapRef.current!.setCenter({
-          lat: pos.coords.latitude,
-          lng: pos.coords.longitude,
-        });
-        mapRef.current!.setZoom(15);
-      },
-      () => setStatus("現在地が取得できませんでした"),
-      { enableHighAccuracy: true, timeout: 5000 }
-    );
   }
 
   // ---- ここから: 検索UIを「外出し」 ----
@@ -305,7 +302,23 @@ export default function MapEmbed({
           検索
         </button>
         <button
-          onClick={recenterToHere}
+          onClick={() => {
+            if (!navigator.geolocation || !mapRef.current) return;
+            navigator.geolocation.getCurrentPosition(
+              (pos) => {
+                const lat = pos.coords.latitude;
+                const lng = pos.coords.longitude;
+                mapRef.current!.setCenter({ lat, lng });
+                mapRef.current!.setZoom(13);
+                // 現在地移動後にコールバックを呼び出し
+                if (onCenterChange) {
+                  onCenterChange({ lat, lng }, "search");
+                }
+              },
+              () => setStatus("現在地が取得できませんでした"),
+              { enableHighAccuracy: true, timeout: 5000 }
+            );
+          }}
           style={{
             padding: "8px 10px",
             borderRadius: 8,
@@ -317,10 +330,21 @@ export default function MapEmbed({
             minWidth: "40px",
             height: "36px",
           }}
-          title="現在地に移動"
+          title="現在地へ移動"
         >
-        
-          <LocationIcon className="w-4 h-4 text-gray-600" />
+          <svg
+            className="w-4 h-4 text-gray-600"
+            fill="none"
+            stroke="currentColor"
+            viewBox="0 0 24 24"
+          >
+            <path
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeWidth={2}
+              d="M12 3a9 9 0 100 18 9 9 0 000-18zM12 8v8m0-8a4 4 0 100 8 4 4 0 000-8z"
+            />
+          </svg>
         </button>
       </div>
 
@@ -356,7 +380,6 @@ export default function MapEmbed({
         }}
       >
         <div ref={wrapRef} className="absolute inset-0" />
-        
 
         {/* ステータス */}
         <div

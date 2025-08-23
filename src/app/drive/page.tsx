@@ -102,7 +102,7 @@ function getEnvDisplay() {
   return `API_BASE=${base} / MAPS_KEY=${hasKey}`;
 }
 
-// 後で実装予定: ルートの進行度を計算する関数
+// 後で実装予定: ルートの進行度を計算する関数1
 /*
 function calculateRouteProgress(
   spot: { lat: number; lng: number },

@@ -59,6 +59,8 @@ interface AlongSpot {
   is_special: boolean;
   oshi_ids?: number[];
   distance_m?: number;
+  routeProgress?: number; // ルート進行度（0.0〜1.0）
+  balancedScore?: number; // バランス距離スコア（0.0〜1.0）
 }
 
 interface PlaylistItem {
@@ -99,6 +101,180 @@ function getEnvDisplay() {
   const hasKey = MAPS_API_KEY ? "●" : "×";
   return `API_BASE=${base} / MAPS_KEY=${hasKey}`;
 }
+
+// 後で実装予定: ルートの進行度を計算する関数
+/*
+function calculateRouteProgress(
+  spot: { lat: number; lng: number },
+  routePolyline: string,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): number {
+  try {
+    // Google Maps Geometry ライブラリを使用してpolylineをデコード
+    const geom = (google.maps as any).geometry;
+    if (!geom || !geom.encoding) {
+      // フォールバック: 直線距離での概算
+      return calculateLinearProgress(spot, origin, destination);
+    }
+
+    const path = geom.encoding.decodePath(routePolyline);
+    if (!path || path.length < 2) {
+      return calculateLinearProgress(spot, origin, destination);
+    }
+
+    // ルート上の各ポイントまでの累積距離を計算
+    let totalDistance = 0;
+    const segmentDistances: number[] = [];
+    
+    for (let i = 1; i < path.length; i++) {
+      const segmentDistance = google.maps.geometry.spherical.computeDistanceBetween(
+        path[i - 1],
+        path[i]
+      );
+      totalDistance += segmentDistance;
+      segmentDistances.push(totalDistance);
+    }
+
+    // スポットから最も近いルート上のポイントを見つける
+    let minDistance = Infinity;
+    let closestSegmentIndex = 0;
+    
+    for (let i = 0; i < path.length; i++) {
+      const distance = google.maps.geometry.spherical.computeDistanceBetween(
+        new google.maps.LatLng(spot.lat, spot.lng),
+        path[i]
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestSegmentIndex = i;
+      }
+    }
+
+    // そのポイントまでの累積距離を計算
+    let distanceToClosest = 0;
+    for (let i = 0; i < closestSegmentIndex; i++) {
+      if (i < segmentDistances.length) {
+        distanceToClosest = segmentDistances[i];
+      }
+    }
+
+    // 進行度を計算（0.0 〜 1.0）
+    return totalDistance > 0 ? distanceToClosest / totalDistance : 0.5;
+  } catch (error) {
+    console.warn("ルート進行度計算でエラー:", error);
+    return calculateLinearProgress(spot, origin, destination);
+  }
+}
+
+// 後で実装予定: 直線距離での概算進行度計算（フォールバック）
+function calculateLinearProgress(
+  spot: { lat: number; lng: number },
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): number {
+  try {
+    const originToSpot = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(origin.lat, origin.lng),
+      new google.maps.LatLng(spot.lat, spot.lng)
+    );
+    
+    const originToDest = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(origin.lat, origin.lng),
+      new google.maps.LatLng(destination.lat, destination.lng)
+    );
+
+    if (originToDest === 0) return 0.5;
+    
+    // 直線距離での概算進行度
+    return Math.max(0, Math.min(1, originToSpot / originToDest));
+  } catch (error) {
+    console.warn("直線距離計算でエラー:", error);
+    return 0.5;
+  }
+}
+
+// 後で実装予定: スポットをルートの進行度に基づいてセクション分割し、均等に分布させる
+function distributeSpotsEvenly(
+  spots: any[],
+  routePolyline: string,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  sections: number = 5
+): any[] {
+  if (spots.length === 0) return [];
+
+  // 各スポットの進行度を計算
+  const spotsWithProgress = spots.map(spot => ({
+    ...spot,
+    routeProgress: calculateRouteProgress(spot, routePolyline, origin, destination)
+  }));
+
+  // セクションごとにスポットを分類
+  const sectionedSpots: any[][] = Array(sections).fill(null).map(() => []);
+  
+  spotsWithProgress.forEach(spot => {
+    const sectionIndex = Math.min(
+      Math.floor(spot.routeProgress * sections),
+      sections - 1
+    );
+    sectionedSpots[sectionIndex].push(spot);
+  });
+
+  // 各セクション内で距離順にソート
+  sectionedSpots.forEach(section => {
+    section.sort((a, b) => (a.distance_m || 0) - (b.distance_m || 0));
+  });
+
+  // 各セクションから均等に選択（最大件数を考慮）
+  const maxPerSection = Math.ceil(200 / sections);
+  const distributedSpots: any[] = [];
+  
+  sectionedSpots.forEach(section => {
+    const selected = section.slice(0, maxPerSection);
+    distributedSpots.push(...selected);
+  });
+
+  // 最終的に進行度順でソート
+  return distributedSpots.sort((a, b) => a.routeProgress - b.routeProgress);
+}
+
+// 後で実装予定: バランスの良い距離スコアを計算
+function calculateBalancedDistanceScore(
+  spot: any,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): number {
+  try {
+    const distFromOrigin = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(origin.lat, origin.lng),
+      new google.maps.LatLng(spot.lat, spot.lng)
+    );
+    
+    const distToDestination = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(spot.lat, spot.lng),
+      new google.maps.LatLng(destination.lat, destination.lng)
+    );
+    
+    const totalRouteDistance = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(origin.lat, origin.lng),
+      new google.maps.LatLng(destination.lat, destination.lng)
+    );
+
+    if (totalRouteDistance === 0) return 0;
+
+    // ルートの真ん中に近いほど高スコア
+    const midPoint = totalRouteDistance / 2;
+    const distanceFromMid = Math.abs((distFromOrigin + distToDestination) / 2 - midPoint);
+    
+    // スコアを正規化（0〜1、高いほど良い）
+    return Math.max(0, 1 - (distanceFromMid / totalRouteDistance));
+  } catch (error) {
+    console.warn("バランス距離スコア計算でエラー:", error);
+    return 0.5;
+  }
+}
+*/
 
 // =============================
 // Page Component
@@ -145,6 +321,9 @@ export default function Page() {
   const [loadingPlaylist, setLoadingPlaylist] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 後で実装予定: スポットソート方法の選択
+  // const [spotSortMethod, setSpotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
 
   const selectedRouteObj = routes.find((r) => r.type === selectedRoute) || null;
 
@@ -483,11 +662,11 @@ export default function Page() {
 
     // 既存のポリラインをクリア
     if (polyFastRef.current) {
-      polyFastRef.current.setMap(null);
+      polyFastRef.current.setMap(null as any);
       polyFastRef.current = null;
     }
     if (polyEcoRef.current) {
-      polyEcoRef.current.setMap(null);
+      polyEcoRef.current.setMap(null as any);
       polyEcoRef.current = null;
     }
 
@@ -831,6 +1010,57 @@ export default function Page() {
       if (!res.ok) throw new Error(`along-route ${res.status}`);
       const json = await res.json();
       const items: AlongSpot[] = Array.isArray(json) ? json : json.items ?? [];
+
+      // 後で実装予定: 選択されたソート方法に基づいてスポットをソート
+      /*
+      let sortedItems = [...items];
+      
+      if (spotSortMethod !== "default" && mapRef.current) {
+        try {
+          const origin = originMarkerRef.current?.getPosition() || mapRef.current.getCenter();
+          const destination = destMarkerRef.current?.getPosition();
+          
+          if (origin && destination) {
+            const originCoords = {
+              lat: origin.lat(),
+              lng: origin.lng()
+            };
+            const destCoords = {
+              lat: destination.lat(),
+              lng: destination.lng()
+            };
+            
+            switch (spotSortMethod) {
+              case "progress":
+                // 進行度順でソート
+                sortedItems = items.map(spot => ({
+                  ...spot,
+                  routeProgress: calculateRouteProgress(spot, sr.polyline, originCoords, destCoords)
+                })).sort((a, b) => (a.routeProgress || 0) - (b.routeProgress || 0));
+                break;
+                
+              case "distributed":
+                // 均等分布でソート
+                sortedItems = distributeSpotsEvenly(items, sr.polyline, originCoords, destCoords, 5);
+                break;
+                
+              case "balanced":
+                // バランス距離スコアでソート
+                sortedItems = items.map(spot => ({
+                  ...spot,
+                  balancedScore: calculateBalancedDistanceScore(spot, originCoords, destCoords)
+                })).sort((a, b) => (b.balancedScore || 0) - (a.balancedScore || 0));
+                break;
+            }
+          }
+        } catch (error) {
+          console.warn("スポットソート処理でエラー:", error);
+          // エラーが発生した場合は元の順序を使用
+          sortedItems = items;
+        }
+      }
+      */
+
       setAlongSpots(items);
 
       // draw markers
@@ -887,6 +1117,16 @@ export default function Page() {
     fetchRoutes();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waypoints]);
+
+  // 後で実装予定: ソート方法が変更された時にスポットを再取得
+  /*
+  useEffect(() => {
+    if (alongSpots.length > 0 && spotSortMethod !== "default") {
+      fetchAlongSpots();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spotSortMethod]);
+  */
 
   // -----------------------------
   // Playlist
@@ -1130,6 +1370,63 @@ export default function Page() {
                 出発
               </button>
             </div>
+
+            {/* スポットソート方法選択 */}
+            {alongSpots.length > 0 && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm font-medium text-gray-700 mb-2">
+                  スポット表示順序:
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => false}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      false
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    デフォルト
+                  </button>
+                  <button
+                    onClick={() => false}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      false
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    進行度順
+                  </button>
+                  <button
+                    onClick={() => false}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      false
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    均等分布
+                  </button>
+                  <button
+                    onClick={() => false}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      false
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    バランス重視
+                  </button>
+                </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  {false && "APIのデフォルト順序"}
+                  {false && "出発地から目的地への進行度順"}
+                  {false && "ルート全体に均等に分布"}
+                  {false && "出発地と目的地の距離バランス重視"}
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -1154,22 +1451,46 @@ export default function Page() {
           <div className="max-w-md mx-auto px-4 mb-4">
             <h3 className="font-semibold text-gray-900 mb-3">
               沿線のフォロー推しスポット ({alongSpots.length}件)
+              {false && (
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  - {false ? "進行度順" : false ? "均等分布" : "バランス重視"}
+                </span>
+              )}
             </h3>
             <div className="space-y-2 max-h-60 overflow-auto">
-              {alongSpots.map((s) => (
+              {alongSpots.map((s, index) => (
                 <div
                   key={s.id}
                   className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border border-gray-200"
                 >
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium text-gray-900">{s.name}</div>
-                    <div className="text-sm text-gray-600">
-                      {s.distance_m ? `${Math.round(s.distance_m)} m` : ""}
+                    <div className="flex items-center gap-3 text-sm text-gray-600">
+                      {s.distance_m && (
+                        <span>距離: {Math.round(s.distance_m)}m</span>
+                      )}
+                      {/* 後で実装予定: ソート方法に応じた情報表示
+              {spotSortMethod === "progress" && s.routeProgress !== undefined && (
+                <span className="text-blue-600">
+                  進行度: {Math.round(s.routeProgress * 100)}%
+                </span>
+              )}
+              {spotSortMethod === "balanced" && s.balancedScore !== undefined && (
+                <span className="text-green-600">
+                  バランス: {Math.round(s.balancedScore * 100)}%
+                </span>
+              )}
+              {spotSortMethod === "distributed" && s.routeProgress !== undefined && (
+                <span className="text-purple-600">
+                  進行度: {Math.round(s.routeProgress * 100)}%
+                </span>
+              )}
+              */}
                     </div>
                   </div>
                   <button
                     onClick={() => addWaypoint(s)}
-                    className="px-3 py-1 bg-gray-900 text-white rounded-lg text-xs"
+                    className="px-3 py-1 bg-gray-900 text-white rounded-lg text-xs ml-2"
                   >
                     経由地に追加
                   </button>

@@ -106,7 +106,11 @@ export default function Home() {
             )}
         </div>
 
-        <SectionHeader title="My推しコンテンツ" />
+        <SectionHeader
+          title="My推しコンテンツ"
+          icon="play"
+          iconColor="text-teal-500"
+        />
         <div className="max-w-md mx-auto px-4 space-y-3 mb-6">
           {(contents ?? Array.from({ length: 3 }))
             .slice(0, 5)

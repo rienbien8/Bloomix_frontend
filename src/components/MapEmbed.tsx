@@ -158,16 +158,53 @@ export default function MapEmbed({
         }
       );
 
+      // デバッグ: APIレスポンスを確認
+      console.log("MapEmbed APIレスポンス:", data);
+      console.log(
+        "Homeスポットデータ:",
+        data.items.map((s) => ({
+          id: s.id,
+          name: s.name,
+          is_special: s.is_special,
+          type: typeof s.is_special,
+          value: s.is_special,
+        }))
+      );
+
       // 既存マーカー掃除
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
 
       const google = (window as any).google as typeof window.google;
       data.items.forEach((s) => {
+        // is_special=1のスポットにはHondaLogo.svgを使用
+        let icon = undefined;
+        console.log(`スポット ${s.name} (ID: ${s.id}) のis_special判定:`, {
+          value: s.is_special,
+          type: typeof s.is_special,
+          isEqualToOne: s.is_special === 1,
+          isTruthy: Boolean(s.is_special),
+        });
+
+        if (Boolean(s.is_special)) {
+          console.log(`✅ ${s.name} にHondaLogo.svgを設定`);
+          icon = {
+            url: "/HondaLogo.svg",
+            scaledSize: new google.maps.Size(32, 32),
+            anchor: new google.maps.Point(16, 16),
+          };
+        } else {
+          console.log(
+            `❌ ${s.name} は通常のピン（is_special: ${s.is_special}）`
+          );
+        }
+
         const marker = new google.maps.Marker({
           map: mapRef.current!,
           position: { lat: s.lat, lng: s.lng },
           title: s.name,
+          icon: icon,
+          zIndex: Boolean(s.is_special) ? 1000 : 1, // Specialロゴを前面に表示
         });
         marker.addListener("click", async () => {
           try {

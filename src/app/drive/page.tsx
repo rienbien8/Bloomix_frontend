@@ -1011,6 +1011,18 @@ export default function Page() {
       const json = await res.json();
       const items: AlongSpot[] = Array.isArray(json) ? json : json.items ?? [];
 
+      // デバッグ: is_specialの値を確認
+      console.log(
+        "Drive沿線スポットデータ:",
+        items.map((s) => ({
+          id: s.id,
+          name: s.name,
+          is_special: s.is_special,
+          type: typeof s.is_special,
+          value: s.is_special,
+        }))
+      );
+
       // 後で実装予定: 選択されたソート方法に基づいてスポットをソート
       /*
       let sortedItems = [...items];
@@ -1067,18 +1079,31 @@ export default function Page() {
       clearAlongMarkers();
       const map = mapRef.current!;
       items.forEach((s) => {
+        // is_specialが真値のスポットにはHondaLogo.svgを使用
+        let icon = undefined;
+        if (Boolean(s.is_special)) {
+          icon = {
+            url: "/HondaLogo.svg",
+            scaledSize: new google.maps.Size(26, 24),
+            anchor: new google.maps.Point(16, 16),
+          };
+        } else {
+          // 通常のスポットは円形マーカー
+          icon = {
+            path: (google.maps as any).SymbolPath.CIRCLE,
+            scale: 6,
+            fillColor: "#8b5cf6", // violet
+            fillOpacity: 1,
+            strokeColor: "#ffffff",
+            strokeWeight: 2,
+          };
+        }
+
         const m = new google.maps.Marker({
           map,
           position: { lat: s.lat, lng: s.lng },
           title: s.name,
-          icon: {
-            path: (google.maps as any).SymbolPath.CIRCLE,
-            scale: 6,
-            fillColor: s.is_special ? "#f59e0b" : "#8b5cf6", // amber / violet
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
-          },
+          icon: icon,
         });
         m.addListener("click", () => {
           infoRef.current?.setContent(
@@ -1166,7 +1191,7 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       {/* ヘッダーを固定表示 */}
-      <div className="fixed top-0 left-0 w-full z-10">
+      <div className="fixed top-0 left-0 w-full z-50">
         <Header />
       </div>
 
@@ -1193,7 +1218,7 @@ export default function Page() {
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
                 {showSuggestions && (
-                  <div className="absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto search-suggestions">
+                  <div className="absolute z-40 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto search-suggestions">
                     {searchSuggestions.length > 0 && (
                       <div className="p-2 bg-gray-100 text-xs text-gray-600 border-b border-gray-200">
                         候補: {searchSuggestions.length}件
@@ -1249,7 +1274,7 @@ export default function Page() {
 
             {/* 現在地ボタン（右下） */}
             <div
-              className="absolute z-30"
+              className="absolute z-20"
               style={{
                 bottom: 70,
                 right: 10,

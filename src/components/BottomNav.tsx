@@ -1,7 +1,7 @@
 "use client";
 
 import { usePathname, useRouter } from "next/navigation";
-import { HomeIcon, Compass, Bell, Gear } from "./Icons";
+import { HomeIcon, Compass, Heart, Gear } from "./Icons";
 
 export default function BottomNav() {
   const pathname = usePathname();
@@ -45,7 +45,7 @@ export default function BottomNav() {
           }`}
           onClick={() => handleNavigation("/follow")}
         >
-          <Bell className="w-6 h-6" />
+          <Heart className="w-6 h-6" />
           <span className="text-[10px]">フォロー</span>
         </button>
         <button

@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
+import { TbLocationFilled } from "react-icons/tb";
 
 const API_BASE =
   process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
@@ -15,6 +16,7 @@ type Props = {
     center: { lat: number; lng: number },
     reason: "initial" | "search" | "move"
   ) => void;
+  onBBoxChange?: (bbox: string) => void; // 地図の表示範囲（BBox）が変更された時のコールバック
 };
 
 async function apiGet<T>(
@@ -46,15 +48,18 @@ export default function MapEmbed({
   rounded = "1rem",
   showSpecialToggle = true,
   onCenterChange,
+  onBBoxChange,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const infoRef = useRef<google.maps.InfoWindow | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
+  const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
   const [mapsReady, setMapsReady] = useState(false);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("読み込み中…");
   const [specialOnly, setSpecialOnly] = useState(false);
+  const [showRefreshButton, setShowRefreshButton] = useState(false);
 
   // --- Google Maps 読み込み ---
   useEffect(() => {
@@ -86,6 +91,13 @@ export default function MapEmbed({
         if (onCenterChange) {
           onCenterChange({ lat: 35.659, lng: 139.7 }, "initial");
         }
+        // 初期BBoxも通知
+        if (onBBoxChange) {
+          const bbox = mapToBBox(mapRef.current);
+          if (bbox) {
+            onBBoxChange(bbox);
+          }
+        }
       })
       .catch((e) => {
         console.error(e);
@@ -104,33 +116,28 @@ export default function MapEmbed({
 
     const idleListener = mapRef.current.addListener("idle", () => {
       clearTimeout(timer);
-      timer = setTimeout(loadSpots, 350);
+      timer = setTimeout(() => {
+        // 地図ドラッグ時は自動取得せず、再検索ボタンのみ表示
+        setShowRefreshButton(true);
+        // BBoxの通知は再検索ボタンを押した時のみ行う
+      }, 350);
     });
 
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (pos) => {
-          mapRef.current!.setCenter({
-            lat: pos.coords.latitude,
-            lng: pos.coords.longitude,
-          });
-          mapRef.current!.setZoom(13); // 車移動を前提として適度な範囲を表示
-          setTimeout(loadSpots, 400);
-        },
-        () => setTimeout(loadSpots, 400),
-        { enableHighAccuracy: true, timeout: 5000 }
-      );
-    } else {
-      setTimeout(loadSpots, 400);
-    }
+    // 初期表示時は現在地取得せず、初期位置（渋谷）を維持
+    setTimeout(loadSpots, 400);
 
     return () => {
       if (idleListener) google.maps.event.removeListener(idleListener);
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
+      // 現在地マーカーもクリーンアップ
+      if (currentLocationMarkerRef.current) {
+        currentLocationMarkerRef.current.setMap(null);
+        currentLocationMarkerRef.current = null;
+      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mapsReady, specialOnly, onCenterChange]);
+  }, [mapsReady, specialOnly]);
 
   async function loadSpots() {
     try {
@@ -164,34 +171,60 @@ export default function MapEmbed({
         });
         marker.addListener("click", async () => {
           try {
-            const [detail, contents] = await Promise.all([
+            const [detail, contents, oshis] = await Promise.all([
               apiGet<any>(`/api/v1/spots/${s.id}`),
               apiGet<any>(`/api/v1/spots/${s.id}/contents`, {
                 langs: "ja,en",
                 max_duration: 20,
               }),
+              apiGet<any>(`/api/v1/spots/${s.id}/oshis`),
             ]);
+
             const html = `
-              <div style="max-width:260px">
-                <div style="font-weight:700;margin-bottom:4px">${escapeHtml(
+              <div style="max-width:280px">
+                <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:#1a1a1a">${escapeHtml(
                   detail.name || ""
                 )}</div>
                 <div style="font-size:12px;color:#555;margin-bottom:6px">${escapeHtml(
                   detail.address || ""
                 )}</div>
+                ${
+                  detail.description
+                    ? `<div style="font-size:12px;color:#333;margin-bottom:6px;line-height:1.4">${escapeHtml(
+                        detail.description || ""
+                      )}</div>`
+                    : ""
+                }
                 <div style="font-size:12px;color:#333;margin-bottom:6px">距離: ${
                   s.distance_km ?? "-"
                 } km</div>
                 <div style="font-size:12px;color:#333;margin-bottom:6px">タイプ: ${escapeHtml(
                   s.type || "-"
                 )}${s.is_special ? "（特殊）" : ""}</div>
-                <div style="font-size:12px;color:#111;margin-top:8px;margin-bottom:4px">関連コンテンツ（<=20分）</div>
+                ${
+                  oshis.items && oshis.items.length > 0
+                    ? `
+                <div style="font-size:12px;color:#111;margin-top:8px;margin-bottom:4px;font-weight:600">関連推し</div>
+                <div style="margin-bottom:8px">
+                  ${oshis.items
+                    .map(
+                      (o: any) =>
+                        `<span style="display:inline-block;background:#f0f0f0;color:#333;padding:2px 6px;margin:1px;border-radius:4px;font-size:11px">${escapeHtml(
+                          o.name
+                        )}</span>`
+                    )
+                    .join("")}
+                </div>
+                `
+                    : ""
+                }
+                <div style="font-size:12px;color:#111;margin-top:8px;margin-bottom:4px;font-weight:600">関連コンテンツ（<=20分）</div>
                 ${
                   (contents.items || [])
-                    .slice(0, 5)
+                    .slice(0, 3)
                     .map(
                       (c: any) =>
-                        `<div style='font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis'>・${escapeHtml(
+                        `<div style='font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px'>・${escapeHtml(
                           c.title || ""
                         )}${
                           c.duration_min ? `（${c.duration_min}分）` : ""
@@ -203,7 +236,8 @@ export default function MapEmbed({
               </div>`;
             infoRef.current!.setContent(html);
             infoRef.current!.open({ anchor: marker, map: mapRef.current! });
-          } catch {
+          } catch (error) {
+            console.error("スポット詳細取得エラー:", error);
             infoRef.current!.setContent(
               '<div style="font-size:12px;color:#c00">詳細の取得に失敗しました</div>'
             );
@@ -259,10 +293,36 @@ export default function MapEmbed({
         if (onCenterChange) {
           onCenterChange({ lat, lng }, "search");
         }
+        // 検索後にBBoxを通知
+        if (onBBoxChange) {
+          const bbox = mapToBBox(mapRef.current);
+          if (bbox) {
+            onBBoxChange(bbox);
+          }
+        }
+        // 検索後は再検索ボタンを非表示
+        setShowRefreshButton(false);
       }
     } catch (e) {
       console.error(e);
     }
+  }
+
+  // 再検索ボタンを押した時の処理
+  async function onRefreshArea() {
+    if (!mapRef.current) return;
+    setShowRefreshButton(false);
+    setStatus("このエリアで再検索中…");
+
+    // 再検索時にBBoxを通知
+    if (onBBoxChange) {
+      const bbox = mapToBBox(mapRef.current);
+      if (bbox) {
+        onBBoxChange(bbox);
+      }
+    }
+
+    await loadSpots();
   }
 
   // ---- ここから: 検索UIを「外出し」 ----
@@ -301,51 +361,6 @@ export default function MapEmbed({
         >
           検索
         </button>
-        <button
-          onClick={() => {
-            if (!navigator.geolocation || !mapRef.current) return;
-            navigator.geolocation.getCurrentPosition(
-              (pos) => {
-                const lat = pos.coords.latitude;
-                const lng = pos.coords.longitude;
-                mapRef.current!.setCenter({ lat, lng });
-                mapRef.current!.setZoom(13);
-                // 現在地移動後にコールバックを呼び出し
-                if (onCenterChange) {
-                  onCenterChange({ lat, lng }, "search");
-                }
-              },
-              () => setStatus("現在地が取得できませんでした"),
-              { enableHighAccuracy: true, timeout: 5000 }
-            );
-          }}
-          style={{
-            padding: "8px 10px",
-            borderRadius: 8,
-            border: "1px solid #ccc",
-            background: "#f7f7f7",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            minWidth: "40px",
-            height: "36px",
-          }}
-          title="現在地へ移動"
-        >
-          <svg
-            className="w-4 h-4 text-gray-600"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth={2}
-              d="M12 3a9 9 0 100 18 9 9 0 000-18zM12 8v8m0-8a4 4 0 100 8 4 4 0 000-8z"
-            />
-          </svg>
-        </button>
       </div>
 
       {/* {showSpecialToggle && (
@@ -381,9 +396,52 @@ export default function MapEmbed({
       >
         <div ref={wrapRef} className="absolute inset-0" />
 
+        {/* 再検索ボタン */}
+        {showRefreshButton && (
+          <div
+            className="absolute z-30"
+            style={{
+              top: 10,
+              left: "50%",
+              transform: "translateX(-50%)",
+            }}
+          >
+            <button
+              onClick={onRefreshArea}
+              style={{
+                background: "rgba(255,255,255,0.95)",
+                border: "1px solid #ddd",
+                borderRadius: "20px",
+                padding: "8px 16px",
+                fontSize: "12px",
+                fontWeight: "500",
+                color: "#333",
+                boxShadow: "0 2px 8px rgba(0,0,0,0.15)",
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                cursor: "pointer",
+              }}
+            >
+              <svg
+                width="14"
+                height="14"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+              >
+                <path d="M21 2v6h-6" />
+                <path d="M3 12a9 9 0 0 1 15-6.7L21 8" />
+              </svg>
+              このエリアで再検索
+            </button>
+          </div>
+        )}
+
         {/* ステータス */}
         <div
-          className="absolute z-10"
+          className="absolute z-30"
           style={{
             bottom: 10,
             left: 10,
@@ -394,6 +452,61 @@ export default function MapEmbed({
           }}
         >
           {status}
+        </div>
+
+        {/* 現在地ボタン（右下） */}
+        <div
+          className="absolute z-30"
+          style={{
+            bottom: 70,
+            right: 10,
+          }}
+        >
+          <button
+            onClick={() => {
+              if (!navigator.geolocation || !mapRef.current) return;
+              navigator.geolocation.getCurrentPosition(
+                (pos) => {
+                  const lat = pos.coords.latitude;
+                  const lng = pos.coords.longitude;
+                  const position = { lat, lng };
+
+                  // 地図の中心を現在地に移動
+                  mapRef.current!.setCenter(position);
+                  mapRef.current!.setZoom(13);
+
+                  // 既存の現在地マーカーを削除
+                  if (currentLocationMarkerRef.current) {
+                    currentLocationMarkerRef.current.setMap(null);
+                  }
+
+                  // 新しい現在地マーカーを作成・表示
+                  currentLocationMarkerRef.current =
+                    createCurrentLocationMarker(position, mapRef.current!);
+
+                  // 現在地移動後は再検索ボタンを非表示
+                  setShowRefreshButton(false);
+                },
+                () => setStatus("現在地が取得できませんでした"),
+                { enableHighAccuracy: true, timeout: 5000 }
+              );
+            }}
+            style={{
+              width: "40px",
+              height: "40px",
+              background: "rgba(255, 255, 255, 0.95)",
+              border: "1px solid #ddd",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: "pointer",
+              boxShadow: "0 2px 8px rgba(4, 131, 250, 0.15)",
+            }}
+            title="現在地へ移動"
+          >
+            <TbLocationFilled size={18} color="#4285F4" />
+          </button>
         </div>
       </div>
     </div>
@@ -414,4 +527,26 @@ function escapeHtml(s: any) {
         } as any
       )[m])
   );
+}
+
+// 現在地マーカーを作成する関数
+function createCurrentLocationMarker(
+  position: { lat: number; lng: number },
+  map: google.maps.Map
+): google.maps.Marker {
+  const google = (window as any).google as typeof window.google;
+  return new google.maps.Marker({
+    position,
+    map,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: "#4285F4", // Google Blue
+      fillOpacity: 1,
+      strokeColor: "#FFFFFF",
+      strokeWeight: 2,
+    },
+    title: "現在地",
+    zIndex: 1000, // 他のマーカーより前面に表示
+  });
 }

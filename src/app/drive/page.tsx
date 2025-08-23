@@ -9,6 +9,8 @@
 /* global google */
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import { Loader } from "@googlemaps/js-api-loader";
+import { IoLocationSharp } from "react-icons/io5";
+import { TbLocationFilled } from "react-icons/tb";
 import Header from "../../components/Header";
 import BottomNav from "../../components/BottomNav";
 import { LocationIcon } from "../../components/Icons";
@@ -21,7 +23,7 @@ const API_BASE =
 const MAPS_API_KEY = process.env.NEXT_PUBLIC_GOOGLE_MAPS_API_KEY || "";
 
 const DEFAULT_CENTER = { lat: 35.6809591, lng: 139.7673068 }; // 東京駅
-const DEFAULT_ZOOM = 13;
+const DEFAULT_ZOOM = 11; // より広い範囲を表示するため縮小
 const AUTOCOMPLETE_RADIUS_M = 3000;
 const BUFFER_M_DEFAULT = 10000; // 一時的に10kmに拡大
 const USER_ID_DEFAULT = 1;
@@ -57,6 +59,8 @@ interface AlongSpot {
   is_special: boolean;
   oshi_ids?: number[];
   distance_m?: number;
+  routeProgress?: number; // ルート進行度（0.0〜1.0）
+  balancedScore?: number; // バランス距離スコア（0.0〜1.0）
 }
 
 interface PlaylistItem {
@@ -98,6 +102,180 @@ function getEnvDisplay() {
   return `API_BASE=${base} / MAPS_KEY=${hasKey}`;
 }
 
+// 後で実装予定: ルートの進行度を計算する関数1
+/*
+function calculateRouteProgress(
+  spot: { lat: number; lng: number },
+  routePolyline: string,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): number {
+  try {
+    // Google Maps Geometry ライブラリを使用してpolylineをデコード
+    const geom = (google.maps as any).geometry;
+    if (!geom || !geom.encoding) {
+      // フォールバック: 直線距離での概算
+      return calculateLinearProgress(spot, origin, destination);
+    }
+
+    const path = geom.encoding.decodePath(routePolyline);
+    if (!path || path.length < 2) {
+      return calculateLinearProgress(spot, origin, destination);
+    }
+
+    // ルート上の各ポイントまでの累積距離を計算
+    let totalDistance = 0;
+    const segmentDistances: number[] = [];
+    
+    for (let i = 1; i < path.length; i++) {
+      const segmentDistance = google.maps.geometry.spherical.computeDistanceBetween(
+        path[i - 1],
+        path[i]
+      );
+      totalDistance += segmentDistance;
+      segmentDistances.push(totalDistance);
+    }
+
+    // スポットから最も近いルート上のポイントを見つける
+    let minDistance = Infinity;
+    let closestSegmentIndex = 0;
+    
+    for (let i = 0; i < path.length; i++) {
+      const distance = google.maps.geometry.spherical.computeDistanceBetween(
+        new google.maps.LatLng(spot.lat, spot.lng),
+        path[i]
+      );
+      if (distance < minDistance) {
+        minDistance = distance;
+        closestSegmentIndex = i;
+      }
+    }
+
+    // そのポイントまでの累積距離を計算
+    let distanceToClosest = 0;
+    for (let i = 0; i < closestSegmentIndex; i++) {
+      if (i < segmentDistances.length) {
+        distanceToClosest = segmentDistances[i];
+      }
+    }
+
+    // 進行度を計算（0.0 〜 1.0）
+    return totalDistance > 0 ? distanceToClosest / totalDistance : 0.5;
+  } catch (error) {
+    console.warn("ルート進行度計算でエラー:", error);
+    return calculateLinearProgress(spot, origin, destination);
+  }
+}
+
+// 後で実装予定: 直線距離での概算進行度計算（フォールバック）
+function calculateLinearProgress(
+  spot: { lat: number; lng: number },
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): number {
+  try {
+    const originToSpot = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(origin.lat, origin.lng),
+      new google.maps.LatLng(spot.lat, spot.lng)
+    );
+    
+    const originToDest = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(origin.lat, origin.lng),
+      new google.maps.LatLng(destination.lat, destination.lng)
+    );
+
+    if (originToDest === 0) return 0.5;
+    
+    // 直線距離での概算進行度
+    return Math.max(0, Math.min(1, originToSpot / originToDest));
+  } catch (error) {
+    console.warn("直線距離計算でエラー:", error);
+    return 0.5;
+  }
+}
+
+// 後で実装予定: スポットをルートの進行度に基づいてセクション分割し、均等に分布させる
+function distributeSpotsEvenly(
+  spots: any[],
+  routePolyline: string,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number },
+  sections: number = 5
+): any[] {
+  if (spots.length === 0) return [];
+
+  // 各スポットの進行度を計算
+  const spotsWithProgress = spots.map(spot => ({
+    ...spot,
+    routeProgress: calculateRouteProgress(spot, routePolyline, origin, destination)
+  }));
+
+  // セクションごとにスポットを分類
+  const sectionedSpots: any[][] = Array(sections).fill(null).map(() => []);
+  
+  spotsWithProgress.forEach(spot => {
+    const sectionIndex = Math.min(
+      Math.floor(spot.routeProgress * sections),
+      sections - 1
+    );
+    sectionedSpots[sectionIndex].push(spot);
+  });
+
+  // 各セクション内で距離順にソート
+  sectionedSpots.forEach(section => {
+    section.sort((a, b) => (a.distance_m || 0) - (b.distance_m || 0));
+  });
+
+  // 各セクションから均等に選択（最大件数を考慮）
+  const maxPerSection = Math.ceil(200 / sections);
+  const distributedSpots: any[] = [];
+  
+  sectionedSpots.forEach(section => {
+    const selected = section.slice(0, maxPerSection);
+    distributedSpots.push(...selected);
+  });
+
+  // 最終的に進行度順でソート
+  return distributedSpots.sort((a, b) => a.routeProgress - b.routeProgress);
+}
+
+// 後で実装予定: バランスの良い距離スコアを計算
+function calculateBalancedDistanceScore(
+  spot: any,
+  origin: { lat: number; lng: number },
+  destination: { lat: number; lng: number }
+): number {
+  try {
+    const distFromOrigin = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(origin.lat, origin.lng),
+      new google.maps.LatLng(spot.lat, spot.lng)
+    );
+    
+    const distToDestination = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(spot.lat, spot.lng),
+      new google.maps.LatLng(destination.lat, destination.lng)
+    );
+    
+    const totalRouteDistance = google.maps.geometry.spherical.computeDistanceBetween(
+      new google.maps.LatLng(origin.lat, origin.lng),
+      new google.maps.LatLng(destination.lat, destination.lng)
+    );
+
+    if (totalRouteDistance === 0) return 0;
+
+    // ルートの真ん中に近いほど高スコア
+    const midPoint = totalRouteDistance / 2;
+    const distanceFromMid = Math.abs((distFromOrigin + distToDestination) / 2 - midPoint);
+    
+    // スコアを正規化（0〜1、高いほど良い）
+    return Math.max(0, 1 - (distanceFromMid / totalRouteDistance));
+  } catch (error) {
+    console.warn("バランス距離スコア計算でエラー:", error);
+    return 0.5;
+  }
+}
+*/
+
 // =============================
 // Page Component
 // =============================
@@ -117,6 +295,15 @@ export default function Page() {
     lat: number;
     lng: number;
   } | null>(null);
+  const [searchSuggestions, setSearchSuggestions] = useState<
+    Array<{
+      place_id: string;
+      name: string;
+      address: string;
+      location: { latitude: number; longitude: number };
+    }>
+  >([]);
+  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const [routes, setRoutes] = useState<RouteData[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<"fastest" | "eco" | null>(
@@ -134,6 +321,9 @@ export default function Page() {
   const [loadingPlaylist, setLoadingPlaylist] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // 後で実装予定: スポットソート方法の選択
+  // const [spotSortMethod, setSpotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
 
   const selectedRouteObj = routes.find((r) => r.type === selectedRoute) || null;
 
@@ -193,36 +383,12 @@ export default function Page() {
         });
         infoRef.current = new google.maps.InfoWindow();
 
-        // Google Places Autocomplete を初期化
-        if (
-          typeof google !== "undefined" &&
-          google.maps &&
-          google.maps.places
-        ) {
-          const input = document.getElementById(
-            "search-input"
-          ) as HTMLInputElement;
-          if (input) {
-            autocompleteRef.current = new google.maps.places.Autocomplete(
-              input,
-              {
-                types: ["establishment", "geocode"],
-                componentRestrictions: { country: "jp" },
-              }
-            );
-
-            autocompleteRef.current.addListener("place_changed", () => {
-              const place = autocompleteRef.current.getPlace();
-              if (place.geometry && place.geometry.location) {
-                const coords = {
-                  lat: place.geometry.location.lat(),
-                  lng: place.geometry.location.lng(),
-                };
-                handlePlaceSelection(place.name || "選択された場所", coords);
-              }
-            });
-          }
+        // 地図初期化後に現在地マーカーを作成
+        if (currentLocation) {
+          createOriginMarker(currentLocation);
         }
+
+        // Google Places Autocomplete は使用しない
       })
       .catch((e) => {
         console.error(e);
@@ -235,6 +401,25 @@ export default function Page() {
     };
   }, []);
 
+  // 地図外をクリックした時に候補リストを非表示にする
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      const target = event.target as Element;
+      if (
+        !target.closest("#search-input") &&
+        !target.closest(".search-suggestions")
+      ) {
+        setShowSuggestions(false);
+      }
+    };
+
+    document.addEventListener("mousedown", handleClickOutside);
+    return () => {
+      document.removeEventListener("mousedown", handleClickOutside);
+    };
+  }, []);
+
+  // -----------------------------
   // 現在地を取得
   const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
@@ -267,27 +452,11 @@ export default function Page() {
       // 地図が初期化済みの場合は中心を更新
       if (mapRef.current) {
         mapRef.current.setCenter(coords);
-        mapRef.current.setZoom(15);
+        mapRef.current.setZoom(13); // より広い範囲を表示
       }
 
       // 現在地マーカーを作成
-      if (originMarkerRef.current) {
-        originMarkerRef.current.setMap(null);
-      }
-
-      originMarkerRef.current = new google.maps.Marker({
-        position: coords,
-        map: mapRef.current,
-        title: "現在地",
-        icon: {
-          path: google.maps.SymbolPath.CIRCLE,
-          scale: 8,
-          fillColor: "#4285F4",
-          fillOpacity: 1,
-          strokeColor: "#ffffff",
-          strokeWeight: 2,
-        },
-      });
+      createOriginMarker(coords);
     } catch (error) {
       console.error("位置情報の取得に失敗しました:", error);
       setError(
@@ -298,10 +467,36 @@ export default function Page() {
     }
   };
 
+  // 現在地マーカーを作成する関数
+  const createOriginMarker = (coords: { lat: number; lng: number }) => {
+    if (!mapRef.current) return;
+
+    // 既存の現在地マーカーを削除
+    if (originMarkerRef.current) {
+      originMarkerRef.current.setMap(null);
+    }
+
+    // 新しい現在地マーカーを作成
+    originMarkerRef.current = new google.maps.Marker({
+      position: coords,
+      map: mapRef.current,
+      title: "現在地",
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 8,
+        fillColor: "#4285F4",
+        fillOpacity: 1,
+        strokeColor: "#ffffff",
+        strokeWeight: 2,
+      },
+    });
+  };
+
   // 場所選択の処理
   const handlePlaceSelection = (
     name: string,
-    coords: { lat: number; lng: number }
+    coords: { lat: number; lng: number },
+    address?: string // 住所パラメータを追加
   ) => {
     setError(null);
 
@@ -318,21 +513,285 @@ export default function Page() {
       position: coords,
       title: name,
       icon: {
-        path: google.maps.SymbolPath.CIRCLE,
-        scale: 8,
-        fillColor: "#EA4335",
-        fillOpacity: 1,
-        strokeColor: "#ffffff",
-        strokeWeight: 2,
+        url: `data:image/svg+xml;charset=UTF-8,${encodeURIComponent(`
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7z" fill="#DC2626"/>
+            <path d="M12 11.5c-1.12-2.5-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z" fill="#DC2626"/>
+          </svg>
+        `)}`,
+        scaledSize: new google.maps.Size(32, 32),
+        anchor: new google.maps.Point(16, 32),
       },
+    });
+
+    // 目的地マーカーにクリックイベントを追加
+    destMarkerRef.current.addListener("click", () => {
+      if (infoRef.current) {
+        const content = `
+          <div style="min-width: 200px; padding: 16px;">
+            <button 
+              id="go-here-btn"
+              style="
+                width: 100%;
+                padding: 12px 16px;
+                background: #3b82f6;
+                color: white;
+                border: none;
+                border-radius: 8px;
+                font-weight: 600;
+                font-size: 14px;
+                cursor: pointer;
+                transition: background 0.2s;
+                margin-bottom: 16px;
+              "
+              onmouseover="this.style.background='#2563eb'"
+              onmouseout="this.style.background='#3b82f6'"
+            >
+              ここに行く
+            </button>
+            <div style="font-weight: 600; margin-bottom: 8px; color: #333; font-size: 14px;">
+              ${name}
+            </div>
+            <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
+              ${address || `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`}
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 12px;">
+              <button 
+                id="set-origin-btn"
+                style="
+                  flex: 1;
+                  padding: 8px 12px;
+                  background: #f59e0b;
+                  color: white;
+                  border: none;
+                  border-radius: 6px;
+                  font-weight: 500;
+                  font-size: 12px;
+                  cursor: pointer;
+                  transition: background 0.2s;
+                "
+                onmouseover="this.style.background='#d97706'"
+                onmouseout="this.style.background='#f59e0b'"
+              >
+                出発地に設定
+              </button>
+              <button 
+                id="share-btn"
+                style="
+                  flex: 1;
+                  padding: 8px 12px;
+                  background: #10b981;
+                  color: white;
+                  border: none;
+                  border-radius: 6px;
+                  font-weight: 500;
+                  font-size: 12px;
+                  cursor: pointer;
+                  transition: background 0.2s;
+                "
+                onmouseover="this.style.background='#059669'"
+                onmouseout="this.style.background='#10b981'"
+              >
+                共有
+              </button>
+            </div>
+          </div>
+        `;
+
+        infoRef.current.setContent(content);
+        infoRef.current.open(map, destMarkerRef.current);
+
+        // ボタンクリックイベントを設定
+        setTimeout(() => {
+          const goHereBtn = document.getElementById("go-here-btn");
+          const setOriginBtn = document.getElementById("set-origin-btn");
+          const shareBtn = document.getElementById("share-btn");
+
+          if (goHereBtn) {
+            goHereBtn.addEventListener("click", () => {
+              fetchRoutes();
+              infoRef.current?.close();
+            });
+          }
+
+          if (setOriginBtn) {
+            setOriginBtn.addEventListener("click", () => {
+              // 出発地として設定
+              if (mapRef.current) {
+                mapRef.current.setCenter(coords);
+                mapRef.current.setZoom(13);
+                createOriginMarker(coords);
+                setCurrentLocation(coords);
+                setCenter(coords);
+              }
+              infoRef.current?.close();
+            });
+          }
+
+          if (shareBtn) {
+            shareBtn.addEventListener("click", () => {
+              // 共有機能（クリップボードにコピー）
+              const shareText = `${name}\n${
+                address || `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`
+              }`;
+              navigator.clipboard
+                .writeText(shareText)
+                .then(() => {
+                  // 成功メッセージを表示（簡易的な実装）
+                  alert("場所の情報をクリップボードにコピーしました");
+                })
+                .catch(() => {
+                  alert("クリップボードへのコピーに失敗しました");
+                });
+            });
+          }
+        }, 100);
+      }
     });
 
     // 地図の中心を目的地に設定
     map.setCenter(coords);
-    map.setZoom(15);
+    map.setZoom(13); // より広い範囲を表示
+
+    // 既存のルートと関連データをクリア
+    setRoutes([]);
+    setSelectedRoute(null);
+    setWaypoints([]);
+    setAlongSpots([]);
+    setPlaylist([]);
+
+    // 既存のポリラインをクリア
+    if (polyFastRef.current) {
+      polyFastRef.current.setMap(null as any);
+      polyFastRef.current = null;
+    }
+    if (polyEcoRef.current) {
+      polyEcoRef.current.setMap(null as any);
+      polyEcoRef.current = null;
+    }
 
     // 検索クエリをクリア
     setQuery("");
+  };
+
+  // 検索処理
+  const handleSearch = async () => {
+    const searchQuery = query.trim();
+    if (!searchQuery) return;
+
+    // 検索実行時に候補リストを非表示
+    setShowSuggestions(false);
+    setSearchSuggestions([]);
+
+    setError(null);
+    setLoadingRoutes(true);
+
+    try {
+      // Google Maps Places API (search-text)を使用して検索
+      const url = new URL(`${API_BASE}/bff/maps/search-text`);
+      url.searchParams.set("q", searchQuery);
+      url.searchParams.set("language", "ja");
+      url.searchParams.set("region", "JP");
+
+      const res = await fetch(url.toString());
+      if (!res.ok) throw new Error(`search-text ${res.status}`);
+
+      const data = await res.json();
+
+      if (data.items && data.items.length > 0) {
+        const firstResult = data.items[0];
+        const coords = {
+          lat: firstResult.location.latitude,
+          lng: firstResult.location.longitude,
+        };
+
+        // 検索結果を表示してピンを立てる
+        handlePlaceSelection(
+          firstResult.address || firstResult.name || searchQuery,
+          coords,
+          firstResult.address
+        );
+      } else {
+        setError(
+          "検索結果が見つかりませんでした。別のキーワードをお試しください。"
+        );
+      }
+    } catch (error) {
+      console.error("検索エラー:", error);
+      setError("検索に失敗しました。しばらく時間をおいて再度お試しください。");
+    } finally {
+      setLoadingRoutes(false);
+    }
+  };
+
+  // 入力に応じて候補を検索
+  const fetchSearchSuggestions = async (input: string) => {
+    if (input.trim().length < 2) {
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+      return;
+    }
+
+    try {
+      const url = new URL(`${API_BASE}/bff/maps/search-text`);
+      url.searchParams.set("q", input);
+      url.searchParams.set("language", "ja");
+      url.searchParams.set("region", "JP");
+      url.searchParams.set("limit", "5");
+
+      const res = await fetch(url.toString());
+      if (!res.ok) return;
+
+      const data = await res.json();
+
+      if (data.items && data.items.length > 0) {
+        setSearchSuggestions(data.items);
+        setShowSuggestions(true);
+      } else {
+        setSearchSuggestions([]);
+        setShowSuggestions(false);
+      }
+    } catch (error) {
+      console.error("候補検索エラー:", error);
+      setSearchSuggestions([]);
+      setShowSuggestions(false);
+    }
+  };
+
+  // 候補選択の処理
+  const handleSuggestionSelect = (suggestion: {
+    place_id: string;
+    name: string;
+    address: string;
+    location: { latitude: number; longitude: number };
+  }) => {
+    try {
+      console.log("候補が選択されました:", suggestion); // デバッグログを追加
+
+      const coords = {
+        lat: suggestion.location.latitude,
+        lng: suggestion.location.longitude,
+      };
+
+      console.log("座標:", coords); // 座標の確認
+
+      // 検索結果を表示してピンを立てる
+      handlePlaceSelection(
+        suggestion.address || suggestion.name,
+        coords,
+        suggestion.address
+      );
+
+      // 候補を非表示にしてクエリをクリア
+      setShowSuggestions(false);
+      setSearchSuggestions([]);
+      setQuery("");
+
+      console.log("候補選択処理が完了しました"); // 処理完了の確認
+    } catch (error) {
+      console.error("候補選択処理でエラーが発生しました:", error);
+      setError("候補の選択に失敗しました。再度お試しください。");
+    }
   };
 
   // -----------------------------
@@ -551,6 +1010,57 @@ export default function Page() {
       if (!res.ok) throw new Error(`along-route ${res.status}`);
       const json = await res.json();
       const items: AlongSpot[] = Array.isArray(json) ? json : json.items ?? [];
+
+      // 後で実装予定: 選択されたソート方法に基づいてスポットをソート
+      /*
+      let sortedItems = [...items];
+      
+      if (spotSortMethod !== "default" && mapRef.current) {
+        try {
+          const origin = originMarkerRef.current?.getPosition() || mapRef.current.getCenter();
+          const destination = destMarkerRef.current?.getPosition();
+          
+          if (origin && destination) {
+            const originCoords = {
+              lat: origin.lat(),
+              lng: origin.lng()
+            };
+            const destCoords = {
+              lat: destination.lat(),
+              lng: destination.lng()
+            };
+            
+            switch (spotSortMethod) {
+              case "progress":
+                // 進行度順でソート
+                sortedItems = items.map(spot => ({
+                  ...spot,
+                  routeProgress: calculateRouteProgress(spot, sr.polyline, originCoords, destCoords)
+                })).sort((a, b) => (a.routeProgress || 0) - (b.routeProgress || 0));
+                break;
+                
+              case "distributed":
+                // 均等分布でソート
+                sortedItems = distributeSpotsEvenly(items, sr.polyline, originCoords, destCoords, 5);
+                break;
+                
+              case "balanced":
+                // バランス距離スコアでソート
+                sortedItems = items.map(spot => ({
+                  ...spot,
+                  balancedScore: calculateBalancedDistanceScore(spot, originCoords, destCoords)
+                })).sort((a, b) => (b.balancedScore || 0) - (a.balancedScore || 0));
+                break;
+            }
+          }
+        } catch (error) {
+          console.warn("スポットソート処理でエラー:", error);
+          // エラーが発生した場合は元の順序を使用
+          sortedItems = items;
+        }
+      }
+      */
+
       setAlongSpots(items);
 
       // draw markers
@@ -608,6 +1118,16 @@ export default function Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [waypoints]);
 
+  // 後で実装予定: ソート方法が変更された時にスポットを再取得
+  /*
+  useEffect(() => {
+    if (alongSpots.length > 0 && spotSortMethod !== "default") {
+      fetchAlongSpots();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [spotSortMethod]);
+  */
+
   // -----------------------------
   // Playlist
   // -----------------------------
@@ -661,17 +1181,59 @@ export default function Page() {
                   id="search-input"
                   placeholder="目的地を入力…"
                   value={query}
-                  onChange={(e) => setQuery(e.target.value)}
+                  onChange={(e) => {
+                    setQuery(e.target.value);
+                    fetchSearchSuggestions(e.target.value);
+                  }}
+                  onKeyPress={(e) => {
+                    if (e.key === "Enter") {
+                      handleSearch();
+                    }
+                  }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
+                {showSuggestions && (
+                  <div className="absolute z-50 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto search-suggestions">
+                    {searchSuggestions.length > 0 && (
+                      <div className="p-2 bg-gray-100 text-xs text-gray-600 border-b border-gray-200">
+                        候補: {searchSuggestions.length}件
+                      </div>
+                    )}
+                    {searchSuggestions.map((s, index) => (
+                      <div
+                        key={s.place_id}
+                        className={`p-3 cursor-pointer hover:bg-gray-50 transition-colors ${
+                          index < searchSuggestions.length - 1
+                            ? "border-b border-gray-200"
+                            : ""
+                        }`}
+                        onClick={() => handleSuggestionSelect(s)}
+                        onMouseDown={(e) => {
+                          e.preventDefault();
+                          e.stopPropagation();
+                        }}
+                      >
+                        <div className="font-medium text-gray-900 mb-1">
+                          {s.name}
+                        </div>
+                        <div className="text-sm text-gray-600">{s.address}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
               <button
-                onClick={getCurrentLocation}
-                disabled={loadingLocation}
-                className="px-4 py-3 bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
-                title="現在地を取得"
+                onClick={() => {
+                  // 検索ボタンクリック時にも候補リストを非表示
+                  setShowSuggestions(false);
+                  setSearchSuggestions([]);
+                  handleSearch();
+                }}
+                disabled={!query.trim() || loadingRoutes}
+                className="px-4 py-3 bg-green-600 text-white rounded-xl hover:bg-green-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center"
+                title="検索"
               >
-                <LocationIcon className="w-5 h-5" />
+                検索
               </button>
             </div>
           </div>
@@ -679,10 +1241,60 @@ export default function Page() {
 
         {/* マップ */}
         <div className="max-w-md mx-auto px-4 mb-4">
-          <div
-            ref={mapDivRef}
-            className="w-full h-80 rounded-xl shadow-card overflow-hidden"
-          />
+          <div className="relative">
+            <div
+              ref={mapDivRef}
+              className="w-full h-80 rounded-xl shadow-card overflow-hidden"
+            />
+
+            {/* 現在地ボタン（右下） */}
+            <div
+              className="absolute z-30"
+              style={{
+                bottom: 70,
+                right: 10,
+              }}
+            >
+              <button
+                onClick={() => {
+                  if (!navigator.geolocation || !mapRef.current) return;
+                  navigator.geolocation.getCurrentPosition(
+                    (pos) => {
+                      const lat = pos.coords.latitude;
+                      const lng = pos.coords.longitude;
+                      const coords = { lat, lng };
+
+                      // 地図の中心を現在地に移動
+                      mapRef.current.setCenter(coords);
+                      mapRef.current.setZoom(13);
+
+                      // 現在地マーカーを作成・表示
+                      createOriginMarker(coords);
+                      setCurrentLocation(coords);
+                      setCenter(coords);
+                    },
+                    () => setError("現在地が取得できませんでした"),
+                    { enableHighAccuracy: true, timeout: 5000 }
+                  );
+                }}
+                style={{
+                  width: "40px",
+                  height: "40px",
+                  background: "rgba(255, 255, 255, 0.95)",
+                  border: "1px solid #ddd",
+                  borderRadius: "50%",
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "center",
+                  cursor: "pointer",
+                  boxShadow: "0 2px 8px rgba(4, 131, 250, 0.15)",
+                }}
+                title="現在地へ移動"
+              >
+                <TbLocationFilled size={18} color="#4285F4" />
+              </button>
+            </div>
+          </div>
         </div>
 
         {/* ルート選択カード */}
@@ -701,7 +1313,7 @@ export default function Page() {
                   <button
                     key={r.type}
                     onClick={() => setSelectedRoute(r.type)}
-                    className={`flex-1 p-4 rounded-xl shadow-card border-2 transition-colors ${
+                    className={`flex-1 p-0 rounded-xl shadow-card border-2 transition-colors ${
                       selectedRoute === r.type
                         ? r.type === "fastest"
                           ? "border-blue-500 bg-blue-50"
@@ -733,38 +1345,90 @@ export default function Page() {
         )}
 
         {/* アクションボタン */}
-        <div className="max-w-md mx-auto px-4 mb-4">
-          <div className="flex flex-wrap gap-2">
-            <button
-              onClick={setOriginFromMapClick}
-              className="px-4 py-2 bg-orange-600 text-white rounded-lg text-sm font-medium hover:bg-orange-700"
-              title="地図上をクリックして出発地を設定"
-            >
-              出発地設定
-            </button>
-            <button
-              onClick={fetchRoutes}
-              disabled={!destMarkerRef.current}
-              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              ルート取得
-            </button>
-            <button
-              onClick={fetchAlongSpots}
-              disabled={!routes.length}
-              className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              沿線スポット表示
-            </button>
-            <button
-              onClick={proposePlaylist}
-              disabled={!selectedRouteObj}
-              className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-            >
-              プレイリスト提案
-            </button>
+        {routes.length > 0 && (
+          <div className="max-w-md mx-auto px-4 mb-4">
+            <div className="flex flex-wrap gap-2 justify-center">
+              <button
+                onClick={fetchAlongSpots}
+                disabled={!routes.length}
+                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                沿線スポット表示
+              </button>
+              <button
+                onClick={proposePlaylist}
+                disabled={!selectedRouteObj}
+                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                プレイリスト提案
+              </button>
+              <button
+                onClick={() => alert("後日実装予定")}
+                disabled={!selectedRouteObj}
+                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700"
+              >
+                出発
+              </button>
+            </div>
+
+            {/* スポットソート方法選択 */}
+            {alongSpots.length > 0 && (
+              <div className="mt-3 p-3 bg-gray-50 rounded-lg">
+                <div className="text-sm font-medium text-gray-700 mb-2">
+                  スポット表示順序:
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    onClick={() => false}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      false
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    デフォルト
+                  </button>
+                  <button
+                    onClick={() => false}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      false
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    進行度順
+                  </button>
+                  <button
+                    onClick={() => false}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      false
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    均等分布
+                  </button>
+                  <button
+                    onClick={() => false}
+                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
+                      false
+                        ? "bg-blue-600 text-white"
+                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
+                    }`}
+                  >
+                    バランス重視
+                  </button>
+                </div>
+                <div className="text-xs text-gray-500 mt-2">
+                  {false && "APIのデフォルト順序"}
+                  {false && "出発地から目的地への進行度順"}
+                  {false && "ルート全体に均等に分布"}
+                  {false && "出発地と目的地の距離バランス重視"}
+                </div>
+              </div>
+            )}
           </div>
-        </div>
+        )}
 
         {/* 経由地チップ */}
         {waypoints.length > 0 && (
@@ -787,22 +1451,46 @@ export default function Page() {
           <div className="max-w-md mx-auto px-4 mb-4">
             <h3 className="font-semibold text-gray-900 mb-3">
               沿線のフォロー推しスポット ({alongSpots.length}件)
+              {false && (
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  - {false ? "進行度順" : false ? "均等分布" : "バランス重視"}
+                </span>
+              )}
             </h3>
             <div className="space-y-2 max-h-60 overflow-auto">
-              {alongSpots.map((s) => (
+              {alongSpots.map((s, index) => (
                 <div
                   key={s.id}
                   className="flex items-center justify-between p-3 bg-white rounded-lg shadow-sm border border-gray-200"
                 >
-                  <div>
+                  <div className="flex-1">
                     <div className="font-medium text-gray-900">{s.name}</div>
-                    <div className="text-sm text-gray-600">
-                      {s.distance_m ? `${Math.round(s.distance_m)} m` : ""}
+                    <div className="flex items-center gap-3 text-sm text-gray-600">
+                      {s.distance_m && (
+                        <span>距離: {Math.round(s.distance_m)}m</span>
+                      )}
+                      {/* 後で実装予定: ソート方法に応じた情報表示
+              {spotSortMethod === "progress" && s.routeProgress !== undefined && (
+                <span className="text-blue-600">
+                  進行度: {Math.round(s.routeProgress * 100)}%
+                </span>
+              )}
+              {spotSortMethod === "balanced" && s.balancedScore !== undefined && (
+                <span className="text-green-600">
+                  バランス: {Math.round(s.balancedScore * 100)}%
+                </span>
+              )}
+              {spotSortMethod === "distributed" && s.routeProgress !== undefined && (
+                <span className="text-purple-600">
+                  進行度: {Math.round(s.routeProgress * 100)}%
+                </span>
+              )}
+              */}
                     </div>
                   </div>
                   <button
                     onClick={() => addWaypoint(s)}
-                    className="px-3 py-1 bg-gray-900 text-white rounded-lg text-xs"
+                    className="px-3 py-1 bg-gray-900 text-white rounded-lg text-xs ml-2"
                   >
                     経由地に追加
                   </button>

@@ -70,6 +70,7 @@ interface PlaylistItem {
   lang?: string;
   spot_id?: number;
   oshi_id?: number;
+  related_oshis?: string[];
 }
 
 interface SearchHistory {
@@ -321,6 +322,7 @@ export default function Page() {
   const [loadingPlaylist, setLoadingPlaylist] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [showPlaylistModal, setShowPlaylistModal] = useState(false);
 
   // 後で実装予定: スポットソート方法の選択
   // const [spotSortMethod, setSpotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
@@ -1088,14 +1090,11 @@ export default function Page() {
             anchor: new google.maps.Point(16, 16),
           };
         } else {
-          // 通常のスポットは円形マーカー
+          // 通常のスポットはstar_logo.svg
           icon = {
-            path: (google.maps as any).SymbolPath.CIRCLE,
-            scale: 6,
-            fillColor: "#8b5cf6", // violet
-            fillOpacity: 1,
-            strokeColor: "#ffffff",
-            strokeWeight: 2,
+            url: "/star_logo.svg",
+            scaledSize: new google.maps.Size(26, 24),
+            anchor: new google.maps.Point(16, 16),
           };
         }
 
@@ -1165,18 +1164,49 @@ export default function Page() {
     setLoadingPlaylist(true);
     setError(null);
     try {
-      const url = new URL(`${API_BASE}/api/v1/plans/content-priority`);
-      url.searchParams.set("target_min", String(Math.round(sr.duration_min)));
-      url.searchParams.set("user_id", String(USER_ID_DEFAULT));
-      url.searchParams.set("langs", "ja");
-      url.searchParams.set("tolerance_min", String(TOLERANCE_MIN_DEFAULT));
-      url.searchParams.set("limit", "50");
+      const url = new URL(`${API_BASE}/api/v1/planner/playlist`);
 
-      const res = await fetch(url.toString());
-      if (!res.ok) throw new Error(`plan ${res.status}`);
+      const requestBody = {
+        target_duration_min: Math.round(sr.duration_min),
+        user_id: USER_ID_DEFAULT,
+        preferred_langs: ["ja"],
+        tolerance_min: TOLERANCE_MIN_DEFAULT,
+        content_types: ["youtube"],
+        max_items: 20,
+      };
+
+      const res = await fetch(url.toString(), {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify(requestBody),
+      });
+
+      if (!res.ok) throw new Error(`planner ${res.status}`);
       const json = await res.json();
-      const queue: PlaylistItem[] = json?.queue ?? [];
+
+      // 新しいレスポンス形式に対応
+      const playlistData = json?.playlist ?? [];
+      const summary = json?.summary;
+
+      // 既存のPlaylistItem形式に変換
+      const queue: PlaylistItem[] = playlistData.map((item: any) => ({
+        content_id: item.content_id,
+        title: item.title,
+        duration_min: item.duration_min,
+        lang: item.lang,
+        spot_id: undefined,
+        oshi_id: undefined,
+        related_oshis: item.related_oshis || [],
+      }));
+
       setPlaylist(queue);
+
+      // サマリー情報をログ出力（デバッグ用）
+      if (summary) {
+        console.log("プレイリスト生成サマリー:", summary);
+      }
     } catch (e) {
       console.error(e);
       setError("プレイリスト提案の取得に失敗しました。");
@@ -1191,7 +1221,7 @@ export default function Page() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       {/* ヘッダーを固定表示 */}
-      <div className="fixed top-0 left-0 w-full z-50">
+      <div className="fixed top-0 left-0 w-full z-[9999]">
         <Header />
       </div>
 
@@ -1528,30 +1558,92 @@ export default function Page() {
         {/* プレイリスト */}
         {playlist.length > 0 && (
           <div className="max-w-md mx-auto px-4 mb-4">
-            <h3 className="font-semibold text-gray-900 mb-3">
-              プレイリスト提案
+            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
+              <span className="text-2xl">🎵</span>
+              <span className="text-black-600">おすすめプレイリスト</span>
             </h3>
-            <div className="space-y-2 max-h-60 overflow-auto">
-              {playlist.map((p) => (
-                <div
-                  key={p.content_id}
-                  className="p-3 bg-white rounded-lg shadow-sm border border-gray-200"
-                >
-                  <div className="flex justify-between items-start">
-                    <div className="font-medium text-gray-900 flex-1">
-                      {p.title || `コンテンツ #${p.content_id}`}
-                    </div>
-                    <div className="text-sm text-gray-600 ml-2">
-                      {toMinLabel(p.duration_min)}
-                    </div>
-                  </div>
-                  {p.lang && (
-                    <div className="text-sm text-gray-600 mt-1">
-                      言語: {p.lang}
-                    </div>
-                  )}
+
+            {/* プレイリスト全体像カード */}
+            <div className="p-4 bg-white rounded-xl shadow-lg border border-green-200 mb-3">
+              <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center gap-2">
+                  {/* <span className="text-2xl">🎵</span>
+                  <span className="font-semibold text-gray-900">
+                    ドライブ用プレイリスト
+                  </span> */}
                 </div>
-              ))}
+                {/* <div className="text-sm text-green-600 font-medium">
+                  {playlist.length}件
+                </div> */}
+              </div>
+
+              {/* 推し名表示 */}
+              <div className="mb-3">
+                <div className="text-base font-bold text-gray-600 mb-2">
+                  ☆推し
+                </div>
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    // プレイリスト内のコンテンツから推し名を抽出
+                    const allOshis = new Set<string>();
+                    playlist.forEach((item) => {
+                      if (item.related_oshis) {
+                        item.related_oshis.forEach((oshi) =>
+                          allOshis.add(oshi)
+                        );
+                      }
+                    });
+
+                    const oshiList = Array.from(allOshis);
+
+                    if (oshiList.length > 0) {
+                      return oshiList.slice(0, 5).map((oshi, index) => (
+                        <span
+                          key={index}
+                          className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium"
+                        >
+                          {oshi}
+                        </span>
+                      ));
+                    } else {
+                      return (
+                        <span className="text-sm text-gray-500 italic">
+                          推し情報がありません
+                        </span>
+                      );
+                    }
+                  })()}
+                </div>
+              </div>
+
+              {/* 時間とコンテンツ数 */}
+              <div className="flex justify-between items-center mb-4">
+                <div className="text-sm text-gray-600">
+                  合計時間:{" "}
+                  <span className="font-semibold text-gray-900">
+                    {playlist.reduce(
+                      (sum, p) => sum + (p.duration_min || 0),
+                      0
+                    )}
+                    分
+                  </span>
+                </div>
+                <div className="text-sm text-gray-600">
+                  コンテンツ:{" "}
+                  <span className="font-semibold text-gray-900">
+                    {playlist.length}件
+                  </span>
+                </div>
+              </div>
+
+              {/* リストを見るボタン */}
+              <button
+                onClick={() => setShowPlaylistModal(true)}
+                className="w-full py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
+              >
+                <span>📋</span>
+                リストを見る
+              </button>
             </div>
           </div>
         )}
@@ -1568,6 +1660,76 @@ export default function Page() {
           </div>
         </div>
       </main>
+
+      {/* プレイリスト詳細モーダル */}
+      {showPlaylistModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[80vh] overflow-hidden">
+            {/* モーダルヘッダー */}
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <span className="text-2xl">🎵</span>
+                プレイリスト詳細
+              </h3>
+              <button
+                onClick={() => setShowPlaylistModal(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* モーダルボディ */}
+            <div className="p-4 max-h-[60vh] overflow-auto">
+              <div className="space-y-3">
+                {playlist.map((p, index) => (
+                  <div
+                    key={p.content_id}
+                    className="p-3 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div className="flex-1">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-sm text-gray-500 font-mono">
+                            #{index + 1}
+                          </span>
+                          <span className="font-medium text-gray-900">
+                            {p.title || `コンテンツ #${p.content_id}`}
+                          </span>
+                        </div>
+                        <div className="text-sm text-gray-600">
+                          時間: {toMinLabel(p.duration_min)}
+                          {p.lang && (
+                            <span className="ml-3">言語: {p.lang}</span>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {/* モーダルフッター */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <div className="flex justify-between items-center text-sm text-gray-600 mb-2">
+                <span>
+                  合計時間:{" "}
+                  {playlist.reduce((sum, p) => sum + (p.duration_min || 0), 0)}
+                  分
+                </span>
+                <span>コンテンツ数: {playlist.length}件</span>
+              </div>
+              <button
+                onClick={() => setShowPlaylistModal(false)}
+                className="w-full py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-colors"
+              >
+                閉じる
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* フッター */}
       <BottomNav />

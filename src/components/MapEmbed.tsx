@@ -190,13 +190,18 @@ export default function MapEmbed({
           console.log(`✅ ${s.name} にHondaLogo.svgを設定`);
           icon = {
             url: "/HondaLogo.svg",
-            scaledSize: new google.maps.Size(32, 32),
+            scaledSize: new google.maps.Size(28, 28),
             anchor: new google.maps.Point(16, 16),
           };
         } else {
           console.log(
-            `❌ ${s.name} は通常のピン（is_special: ${s.is_special}）`
+            `❌ ${s.name} はstar_logo.svg（is_special: ${s.is_special}）`
           );
+          icon = {
+            url: "/star_logo.svg",
+            scaledSize: new google.maps.Size(32, 32),
+            anchor: new google.maps.Point(16, 16),
+          };
         }
 
         const marker = new google.maps.Marker({

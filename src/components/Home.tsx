@@ -74,7 +74,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       {/* ヘッダーを固定表示 */}
-      <div className="fixed top-0 left-0 w-full z-10">
+      <div className="fixed top-0 left-0 w-full z-[9999]">
         <Header />
       </div>
       {/* ヘッダー分の余白を追加 */}

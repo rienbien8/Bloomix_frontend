@@ -55,6 +55,12 @@ export default function FollowListPage() {
           setVisibleCount(artistsData.length);
         }
 
+        // 検索クエリが空の場合は、表示件数を適切に設定
+        if (q.trim() === "" && artistsData.length > pageSize) {
+          setVisibleCount(pageSize);
+          setHasMore(true);
+        }
+
         console.log("Artists loaded:", {
           count: artistsData.length,
           hasMore: artistsData.length > pageSize,
@@ -90,20 +96,56 @@ export default function FollowListPage() {
   useEffect(() => {
     const timeoutId = setTimeout(() => {
       fetchArtists(q);
-      // 検索時は表示件数をリセットしない（ユーザビリティ向上）
-      // setVisibleCount(pageSize);
-      setHasMore(true); // 検索時はhasMoreをリセット
+
+      // 検索クエリが空になった場合は表示件数をリセット
+      if (q.trim() === "") {
+        setVisibleCount(pageSize);
+        setHasMore(true);
+      } else {
+        // 検索時は表示件数をリセットしない（ユーザビリティ向上）
+        setHasMore(true); // 検索時はhasMoreをリセット
+      }
     }, 300); // 300msのディレイ
 
     return () => clearTimeout(timeoutId);
   }, [q]);
 
-  const toggleFollow = (id: string) => {
-    setFollows((prev) => {
-      const updated = { ...prev, [id]: !prev[id] };
-      localStorage.setItem("follows", JSON.stringify(updated));
-      return updated;
-    });
+  const toggleFollow = async (id: string) => {
+    try {
+      const isCurrentlyFollowing = follows[id];
+      const userId = 1; // テスト用ユーザーID
+
+      if (isCurrentlyFollowing) {
+        // フォロー解除
+        const response = await fetch(`/api/v1/users/${userId}/oshis/${id}`, {
+          method: "DELETE",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to unfollow: ${response.status}`);
+        }
+      } else {
+        // フォロー追加
+        const response = await fetch(`/api/v1/users/${userId}/oshis/${id}`, {
+          method: "POST",
+        });
+
+        if (!response.ok) {
+          throw new Error(`Failed to follow: ${response.status}`);
+        }
+      }
+
+      // 成功時のみローカル状態を更新
+      setFollows((prev) => {
+        const updated = { ...prev, [id]: !prev[id] };
+        localStorage.setItem("follows", JSON.stringify(updated));
+        return updated;
+      });
+    } catch (error) {
+      console.error("Follow toggle error:", error);
+      // エラー時は状態を変更しない
+      // 必要に応じてユーザーにエラーを表示
+    }
   };
 
   // 全アーティストからのフォロー数（検索結果に関係なく）
@@ -259,18 +301,6 @@ export default function FollowListPage() {
                     onToggleFollow={() => toggleFollow(artist.id)}
                   />
                 ))}
-
-                {/* 追加読み込み中の表示 */}
-                {hasMore && visibleCount < sorted.length && (
-                  <div className="text-center py-4">
-                    <button
-                      onClick={loadMore}
-                      className="px-4 py-2 bg-sky-500 text-white rounded-lg hover:bg-sky-600 transition-colors"
-                    >
-                      もっと見る ({visibleCount}/{sorted.length})
-                    </button>
-                  </div>
-                )}
 
                 {/* 全件表示完了 */}
                 {!hasMore && sorted.length > 0 && (

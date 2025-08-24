@@ -16,9 +16,11 @@ export default function SpotCard({ spot }: Props) {
 
   return (
     <div className="bg-white rounded-xl shadow-card px-3 py-3 flex items-center gap-3">
-      <div className={`flex items-center justify-center shrink-0 overflow-hidden ${
-        spot.is_special ? "w-12 h-10 rounded-lg" : "w-10 h-10 rounded-full"
-      }`}>
+      <div
+        className={`flex items-center justify-center shrink-0 overflow-hidden ${
+          spot.is_special ? "w-12 h-10 rounded-lg" : "w-10 h-10 rounded-full"
+        }`}
+      >
         <img
           src={thumbnailImage}
           alt={spot.is_special ? "Honda Logo" : "Star Logo"}
@@ -35,10 +37,10 @@ export default function SpotCard({ spot }: Props) {
             : spot.description || spot.address}
         </div>
       </div>
-      <button 
+      <button
         className="text-xs text-white rounded-full px-3 py-1 shrink-0"
-        style={{ 
-          backgroundColor: spot.is_special ? '#EC4899' : '#38BDF8' 
+        style={{
+          backgroundColor: spot.is_special ? "#EC4899" : "#38BDF8",
         }}
       >
         目的地に設定

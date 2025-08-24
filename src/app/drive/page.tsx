@@ -81,6 +81,13 @@ interface SearchHistory {
   timestamp: number;
 }
 
+interface SearchResult {
+  place_id: string;
+  name: string;
+  address: string;
+  location: { latitude: number; longitude: number };
+}
+
 // =============================
 // Helpers
 // =============================
@@ -296,15 +303,11 @@ export default function Page() {
     lat: number;
     lng: number;
   } | null>(null);
-  const [searchSuggestions, setSearchSuggestions] = useState<
-    Array<{
-      place_id: string;
-      name: string;
-      address: string;
-      location: { latitude: number; longitude: number };
-    }>
+
+  const [searchResults, setSearchResults] = useState<SearchResult[]>([]);
+  const [searchResultMarkers, setSearchResultMarkers] = useState<
+    google.maps.Marker[]
   >([]);
-  const [showSuggestions, setShowSuggestions] = useState(false);
 
   const [routes, setRoutes] = useState<RouteData[]>([]);
   const [selectedRoute, setSelectedRoute] = useState<"fastest" | "eco" | null>(
@@ -329,13 +332,77 @@ export default function Page() {
 
   const selectedRouteObj = routes.find((r) => r.type === selectedRoute) || null;
 
+  // 検索結果のピンをクリアする関数
+  const clearSearchResultMarkers = () => {
+    searchResultMarkers.forEach((marker) => marker.setMap(null));
+    setSearchResultMarkers([]);
+  };
+
+  // 検索結果のピンを作成する関数
+  const createSearchResultMarkers = (results: SearchResult[]) => {
+    clearSearchResultMarkers();
+
+    if (!mapRef.current) return;
+
+    const markers: google.maps.Marker[] = [];
+
+    results.forEach((result, index) => {
+      const coords = {
+        lat: result.location.latitude,
+        lng: result.location.longitude,
+      };
+
+      // 候補番号付きのピンを作成
+      const marker = new google.maps.Marker({
+        position: coords,
+        map: mapRef.current,
+        title: `${index + 1}. ${result.name}`,
+        label: {
+          text: String(index + 1),
+          color: "white",
+          fontWeight: "bold",
+        },
+        icon: {
+          path: google.maps.SymbolPath.CIRCLE,
+          scale: 12,
+          fillColor: "#f59e0b", // オレンジ色
+          fillOpacity: 0.9,
+          strokeColor: "#ffffff",
+          strokeWeight: 2,
+        },
+      });
+
+      // クリックイベントを追加
+      marker.addListener("click", () => {
+        // 選択された候補を目的地として設定
+        handlePlaceSelection(result.name, coords, result.address);
+
+        // 検索結果のピンをクリア
+        clearSearchResultMarkers();
+        setSearchResults([]);
+      });
+
+      markers.push(marker);
+    });
+
+    setSearchResultMarkers(markers);
+  };
+
   // -----------------------------
   // Update route line colors based on selection
   // -----------------------------
   const updateRouteLineColors = () => {
+    console.log("updateRouteLineColors called, selectedRoute:", selectedRoute); // デバッグログ
+    console.log("polyFastRef.current exists:", !!polyFastRef.current); // デバッグログ
+    console.log("polyEcoRef.current exists:", !!polyEcoRef.current); // デバッグログ
+
     // 各ラインが存在する場合のみ更新
     if (polyFastRef.current) {
       const isSelected = selectedRoute === "fastest";
+      console.log(
+        "Updating fastest route color:",
+        isSelected ? "selected" : "unselected"
+      ); // デバッグログ
       polyFastRef.current.setOptions({
         strokeColor: isSelected ? "#3b82f6" : "#9ca3af", // blue or gray
         strokeOpacity: isSelected ? 0.9 : 0.4,
@@ -344,9 +411,13 @@ export default function Page() {
     }
     if (polyEcoRef.current) {
       const isSelected = selectedRoute === "eco";
+      console.log(
+        "Updating eco route color:",
+        isSelected ? "selected" : "unselected"
+      ); // デバッグログ
       polyEcoRef.current.setOptions({
-        strokeColor: isSelected ? "#22c55e" : "#9ca3af", // green or gray
-        strokeOpacity: isSelected ? 0.9 : 0.4,
+        strokeColor: isSelected ? "#ec4899" : "#9ca3af", // light pink or gray
+        strokeOpacity: isSelected ? 0.6 : 0.4,
         strokeWeight: isSelected ? 5 : 3,
       });
     }
@@ -385,10 +456,14 @@ export default function Page() {
         });
         infoRef.current = new google.maps.InfoWindow();
 
-        // 地図初期化後に現在地マーカーを作成
-        if (currentLocation) {
-          createOriginMarker(currentLocation);
-        }
+        // 地図初期化完了後に現在地を取得・マーカーを作成
+        setTimeout(() => {
+          if (currentLocation) {
+            createOriginMarker(currentLocation);
+          } else {
+            getCurrentLocation();
+          }
+        }, 100);
 
         // Google Places Autocomplete は使用しない
       })
@@ -403,16 +478,15 @@ export default function Page() {
     };
   }, []);
 
+  // ページ表示時に現在地を取得
+  useEffect(() => {
+    getCurrentLocation();
+  }, []);
+
   // 地図外をクリックした時に候補リストを非表示にする
   useEffect(() => {
     const handleClickOutside = (event: MouseEvent) => {
       const target = event.target as Element;
-      if (
-        !target.closest("#search-input") &&
-        !target.closest(".search-suggestions")
-      ) {
-        setShowSuggestions(false);
-      }
     };
 
     document.addEventListener("mousedown", handleClickOutside);
@@ -425,7 +499,20 @@ export default function Page() {
   // 現在地を取得
   const getCurrentLocation = async () => {
     if (!navigator.geolocation) {
-      setError("お使いのブラウザは位置情報をサポートしていません。");
+      setError(
+        "お使いのブラウザは位置情報をサポートしていません。東京駅を現在地として設定します。"
+      );
+      // 東京駅の座標を設定
+      const tokyoStationCoords = { lat: 35.6812362, lng: 139.7671248 };
+      setCurrentLocation(tokyoStationCoords);
+      setCenter(tokyoStationCoords);
+
+      // 地図が初期化済みの場合は中心を更新とマーカー作成
+      if (mapRef.current) {
+        mapRef.current.setCenter(tokyoStationCoords);
+        mapRef.current.setZoom(13);
+        createOriginMarker(tokyoStationCoords);
+      }
       return;
     }
 
@@ -451,19 +538,29 @@ export default function Page() {
       setCurrentLocation(coords);
       setCenter(coords);
 
-      // 地図が初期化済みの場合は中心を更新
+      // 地図が初期化済みの場合は中心を更新とマーカー作成
       if (mapRef.current) {
         mapRef.current.setCenter(coords);
         mapRef.current.setZoom(13); // より広い範囲を表示
+        // 現在地マーカーを作成
+        createOriginMarker(coords);
       }
-
-      // 現在地マーカーを作成
-      createOriginMarker(coords);
+      // 地図が初期化されていない場合は、地図初期化後にマーカーを作成するため何もしない
     } catch (error) {
       console.error("位置情報の取得に失敗しました:", error);
-      setError(
-        "現在地の取得に失敗しました。位置情報の許可を確認してください。"
-      );
+      setError("現在地の取得に失敗しました。東京駅を現在地として設定します。");
+
+      // 東京駅の座標を設定
+      const tokyoStationCoords = { lat: 35.6812362, lng: 139.7671248 };
+      setCurrentLocation(tokyoStationCoords);
+      setCenter(tokyoStationCoords);
+
+      // 地図が初期化済みの場合は中心を更新とマーカー作成
+      if (mapRef.current) {
+        mapRef.current.setCenter(tokyoStationCoords);
+        mapRef.current.setZoom(13);
+        createOriginMarker(tokyoStationCoords);
+      }
     } finally {
       setLoadingLocation(false);
     }
@@ -531,39 +628,15 @@ export default function Page() {
       if (infoRef.current) {
         const content = `
           <div style="min-width: 200px; padding: 16px;">
-            <button 
-              id="go-here-btn"
-              style="
-                width: 100%;
-                padding: 12px 16px;
-                background: #3b82f6;
-                color: white;
-                border: none;
-                border-radius: 8px;
-                font-weight: 600;
-                font-size: 14px;
-                cursor: pointer;
-                transition: background 0.2s;
-                margin-bottom: 16px;
-              "
-              onmouseover="this.style.background='#2563eb'"
-              onmouseout="this.style.background='#3b82f6'"
-            >
-              ここに行く
-            </button>
-            <div style="font-weight: 600; margin-bottom: 8px; color: #333; font-size: 14px;">
-              ${name}
-            </div>
-            <div style="font-size: 12px; color: #666; margin-bottom: 8px;">
-              ${address || `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`}
-            </div>
-            <div style="display: flex; gap: 8px; margin-top: 12px;">
+            <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+              <div style="font-weight: 600; color: #333; font-size: 14px; flex: 1;">
+                ${name}
+              </div>
               <button 
-                id="set-origin-btn"
+                id="set-destination-btn"
                 style="
-                  flex: 1;
                   padding: 8px 12px;
-                  background: #f59e0b;
+                  background: #38BDF8;
                   color: white;
                   border: none;
                   border-radius: 6px;
@@ -571,30 +644,12 @@ export default function Page() {
                   font-size: 12px;
                   cursor: pointer;
                   transition: background 0.2s;
+                  white-space: nowrap;
                 "
-                onmouseover="this.style.background='#d97706'"
-                onmouseout="this.style.background='#f59e0b'"
+                onmouseover="this.style.background='#0EA5E9'"
+                onmouseout="this.style.background='#38BDF8'"
               >
-                出発地に設定
-              </button>
-              <button 
-                id="share-btn"
-                style="
-                  flex: 1;
-                  padding: 8px 12px;
-                  background: #10b981;
-                  color: white;
-                  border: none;
-                  border-radius: 6px;
-                  font-weight: 500;
-                  font-size: 12px;
-                  cursor: pointer;
-                  transition: background 0.2s;
-                "
-                onmouseover="this.style.background='#059669'"
-                onmouseout="this.style.background='#10b981'"
-              >
-                共有
+                目的地に設定
               </button>
             </div>
           </div>
@@ -603,48 +658,28 @@ export default function Page() {
         infoRef.current.setContent(content);
         infoRef.current.open(map, destMarkerRef.current);
 
-        // ボタンクリックイベントを設定
+        // 目的地に設定ボタンのクリックイベントを設定
         setTimeout(() => {
-          const goHereBtn = document.getElementById("go-here-btn");
-          const setOriginBtn = document.getElementById("set-origin-btn");
-          const shareBtn = document.getElementById("share-btn");
+          const setDestinationBtn = document.getElementById(
+            "set-destination-btn"
+          );
 
-          if (goHereBtn) {
-            goHereBtn.addEventListener("click", () => {
-              fetchRoutes();
-              infoRef.current?.close();
-            });
-          }
-
-          if (setOriginBtn) {
-            setOriginBtn.addEventListener("click", () => {
-              // 出発地として設定
-              if (mapRef.current) {
-                mapRef.current.setCenter(coords);
-                mapRef.current.setZoom(13);
-                createOriginMarker(coords);
-                setCurrentLocation(coords);
-                setCenter(coords);
+          if (setDestinationBtn) {
+            setDestinationBtn.addEventListener("click", () => {
+              // 現在地から出発してルートを表示
+              if (currentLocation) {
+                setCenter(currentLocation);
+                createOriginMarker(currentLocation);
+                // ルートを取得
+                fetchRoutes();
+              } else {
+                setError(
+                  "現在地が取得できません。現在地の取得をお待ちください。"
+                );
               }
-              infoRef.current?.close();
-            });
-          }
 
-          if (shareBtn) {
-            shareBtn.addEventListener("click", () => {
-              // 共有機能（クリップボードにコピー）
-              const shareText = `${name}\n${
-                address || `${coords.lat.toFixed(6)}, ${coords.lng.toFixed(6)}`
-              }`;
-              navigator.clipboard
-                .writeText(shareText)
-                .then(() => {
-                  // 成功メッセージを表示（簡易的な実装）
-                  alert("場所の情報をクリップボードにコピーしました");
-                })
-                .catch(() => {
-                  alert("クリップボードへのコピーに失敗しました");
-                });
+              // 情報ウィンドウを閉じる
+              infoRef.current?.close();
             });
           }
         }, 100);
@@ -653,7 +688,39 @@ export default function Page() {
 
     // 地図の中心を目的地に設定
     map.setCenter(coords);
-    map.setZoom(13); // より広い範囲を表示
+
+    // 現在地と目的地の距離に基づいて適切なズームレベルを設定
+    if (currentLocation) {
+      const distance = google.maps.geometry.spherical.computeDistanceBetween(
+        new google.maps.LatLng(currentLocation.lat, currentLocation.lng),
+        new google.maps.LatLng(coords.lat, coords.lng)
+      );
+
+      // 距離に基づいてズームレベルを調整
+      let targetZoom = 13; // デフォルト
+      if (distance > 50000) {
+        // 50km以上
+        targetZoom = 10;
+      } else if (distance > 20000) {
+        // 20km以上
+        targetZoom = 11;
+      } else if (distance > 10000) {
+        // 10km以上
+        targetZoom = 12;
+      } else if (distance > 5000) {
+        // 5km以上
+        targetZoom = 13;
+      } else if (distance > 2000) {
+        // 2km以上
+        targetZoom = 14;
+      } else {
+        targetZoom = 15;
+      }
+
+      map.setZoom(targetZoom);
+    } else {
+      map.setZoom(13); // 現在地がない場合はデフォルト
+    }
 
     // 既存のルートと関連データをクリア
     setRoutes([]);
@@ -681,9 +748,32 @@ export default function Page() {
     const searchQuery = query.trim();
     if (!searchQuery) return;
 
-    // 検索実行時に候補リストを非表示
-    setShowSuggestions(false);
-    setSearchSuggestions([]);
+    // 検索開始時に既存の状態を初期化
+    setRoutes([]);
+    setSelectedRoute(null);
+    setWaypoints([]);
+    setAlongSpots([]);
+    setPlaylist([]);
+    setShowPlaylistModal(false);
+
+    // 既存のポリラインをクリア
+    if (polyFastRef.current) {
+      polyFastRef.current.setMap(null as any);
+      polyFastRef.current = null;
+    }
+    if (polyEcoRef.current) {
+      polyEcoRef.current.setMap(null as any);
+      polyEcoRef.current = null;
+    }
+
+    // 既存の目的地マーカーをクリア
+    if (destMarkerRef.current) {
+      destMarkerRef.current.setMap(null);
+      destMarkerRef.current = null;
+    }
+
+    // 沿線スポットのマーカーをクリア
+    clearAlongMarkers();
 
     setError(null);
     setLoadingRoutes(true);
@@ -694,6 +784,7 @@ export default function Page() {
       url.searchParams.set("q", searchQuery);
       url.searchParams.set("language", "ja");
       url.searchParams.set("region", "JP");
+      url.searchParams.set("limit", "5"); // 5件に制限
 
       const res = await fetch(url.toString());
       if (!res.ok) throw new Error(`search-text ${res.status}`);
@@ -701,18 +792,86 @@ export default function Page() {
       const data = await res.json();
 
       if (data.items && data.items.length > 0) {
-        const firstResult = data.items[0];
-        const coords = {
-          lat: firstResult.location.latitude,
-          lng: firstResult.location.longitude,
-        };
+        // 検索結果を保存
+        setSearchResults(data.items);
 
-        // 検索結果を表示してピンを立てる
-        handlePlaceSelection(
-          firstResult.address || firstResult.name || searchQuery,
-          coords,
-          firstResult.address
-        );
+        // 上位5件を地図上にピンで表示
+        createSearchResultMarkers(data.items);
+
+        // 地図の表示範囲を調整（全ての候補が表示されるように）
+        if (mapRef.current && data.items.length > 0) {
+          const bounds = new google.maps.LatLngBounds();
+
+          data.items.forEach((item: SearchResult) => {
+            bounds.extend({
+              lat: item.location.latitude,
+              lng: item.location.longitude,
+            });
+          });
+
+          // 現在地も含める
+          if (currentLocation) {
+            bounds.extend(currentLocation);
+          }
+
+          // ピンの散らばり具合を計算
+          const points = [
+            ...data.items.map((item: SearchResult) => ({
+              lat: item.location.latitude,
+              lng: item.location.longitude,
+            })),
+            ...(currentLocation ? [currentLocation] : []),
+          ];
+
+          let maxDistance = 0;
+          for (let i = 0; i < points.length; i++) {
+            for (let j = i + 1; j < points.length; j++) {
+              const distance =
+                google.maps.geometry.spherical.computeDistanceBetween(
+                  new google.maps.LatLng(points[i].lat, points[i].lng),
+                  new google.maps.LatLng(points[j].lat, points[j].lng)
+                );
+              maxDistance = Math.max(maxDistance, distance);
+            }
+          }
+
+          // 距離に基づいて適切なズームレベルを決定
+          let targetZoom = 15; // デフォルト
+          if (maxDistance > 50000) {
+            // 50km以上
+            targetZoom = 9; // 1つ広域
+          } else if (maxDistance > 20000) {
+            // 20km以上
+            targetZoom = 10; // 1つ広域
+          } else if (maxDistance > 10000) {
+            // 10km以上
+            targetZoom = 11; // 1つ広域
+          } else if (maxDistance > 5000) {
+            // 5km以上
+            targetZoom = 12; // 1つ広域
+          } else if (maxDistance > 2000) {
+            // 2km以上
+            targetZoom = 13; // 1つ広域
+          } else if (maxDistance > 1000) {
+            // 1km以上
+            targetZoom = 14; // 1つ広域
+          } else {
+            // 1km未満
+            targetZoom = 15; // 1つ広域
+          }
+
+          // 地図の表示範囲を設定
+          mapRef.current.fitBounds(bounds);
+
+          // 計算したズームレベルを適用
+          setTimeout(() => {
+            if (mapRef.current) {
+              mapRef.current.setZoom(targetZoom);
+            }
+          }, 100);
+        }
+
+        setError(null);
       } else {
         setError(
           "検索結果が見つかりませんでした。別のキーワードをお試しください。"
@@ -727,74 +886,6 @@ export default function Page() {
   };
 
   // 入力に応じて候補を検索
-  const fetchSearchSuggestions = async (input: string) => {
-    if (input.trim().length < 2) {
-      setSearchSuggestions([]);
-      setShowSuggestions(false);
-      return;
-    }
-
-    try {
-      const url = new URL(`${API_BASE}/bff/maps/search-text`);
-      url.searchParams.set("q", input);
-      url.searchParams.set("language", "ja");
-      url.searchParams.set("region", "JP");
-      url.searchParams.set("limit", "5");
-
-      const res = await fetch(url.toString());
-      if (!res.ok) return;
-
-      const data = await res.json();
-
-      if (data.items && data.items.length > 0) {
-        setSearchSuggestions(data.items);
-        setShowSuggestions(true);
-      } else {
-        setSearchSuggestions([]);
-        setShowSuggestions(false);
-      }
-    } catch (error) {
-      console.error("候補検索エラー:", error);
-      setSearchSuggestions([]);
-      setShowSuggestions(false);
-    }
-  };
-
-  // 候補選択の処理
-  const handleSuggestionSelect = (suggestion: {
-    place_id: string;
-    name: string;
-    address: string;
-    location: { latitude: number; longitude: number };
-  }) => {
-    try {
-      console.log("候補が選択されました:", suggestion); // デバッグログを追加
-
-      const coords = {
-        lat: suggestion.location.latitude,
-        lng: suggestion.location.longitude,
-      };
-
-      console.log("座標:", coords); // 座標の確認
-
-      // 検索結果を表示してピンを立てる
-      handlePlaceSelection(
-        suggestion.address || suggestion.name,
-        coords,
-        suggestion.address
-      );
-
-      // 候補を非表示にしてクエリをクリア
-      setShowSuggestions(false);
-      setSearchSuggestions([]);
-      setQuery("");
-
-      console.log("候補選択処理が完了しました"); // 処理完了の確認
-    } catch (error) {
-      console.error("候補選択処理でエラーが発生しました:", error);
-      setError("候補の選択に失敗しました。再度お試しください。");
-    }
-  };
 
   // -----------------------------
   // Route fetching
@@ -845,12 +936,10 @@ export default function Page() {
       if (!res.ok) throw new Error(`route ${res.status}`);
       const data: RoutesResponse = await res.json();
       setRoutes(data.routes || []);
-      if (
-        !selectedRoute ||
-        !data.routes.find((r) => r.type === selectedRoute)
-      ) {
-        setSelectedRoute("fastest");
-      }
+
+      // ルート表示時は未選択状態にする
+      let currentSelectedRoute = null;
+      setSelectedRoute(null); // 未選択状態に設定
 
       // draw polylines
       const geom = (google.maps as any).geometry;
@@ -864,9 +953,9 @@ export default function Page() {
         polyFastRef.current = new (google.maps as any).Polyline({
           path: geom.encoding.decodePath(pathFast),
           map,
-          strokeColor: selectedRoute === "fastest" ? "#3b82f6" : "#9ca3af", // blue or gray
-          strokeOpacity: selectedRoute === "fastest" ? 0.9 : 0.4,
-          strokeWeight: selectedRoute === "fastest" ? 6 : 4,
+          strokeColor: "#9ca3af", // 未選択時はグレー
+          strokeOpacity: 0.4,
+          strokeWeight: 4,
           clickable: true, // クリック可能にする
         });
 
@@ -874,29 +963,14 @@ export default function Page() {
         polyFastRef.current.addListener("click", () => {
           setSelectedRoute("fastest");
         });
-
-        // ホバー効果を追加
-        polyFastRef.current.addListener("mouseover", () => {
-          if (selectedRoute !== "fastest") {
-            polyFastRef.current.setOptions({
-              strokeColor: "#3b82f6",
-              strokeOpacity: 0.7,
-              strokeWeight: 7,
-            });
-          }
-        });
-
-        polyFastRef.current.addListener("mouseout", () => {
-          updateRouteLineColors();
-        });
       }
       if (pathEco) {
         polyEcoRef.current = new (google.maps as any).Polyline({
           path: geom.encoding.decodePath(pathEco),
           map,
-          strokeColor: selectedRoute === "eco" ? "#22c55e" : "#9ca3af", // green or gray
-          strokeOpacity: selectedRoute === "eco" ? 0.9 : 0.4,
-          strokeWeight: selectedRoute === "eco" ? 5 : 3,
+          strokeColor: "#9ca3af", // 未選択時はグレー
+          strokeOpacity: 0.4,
+          strokeWeight: 3,
           clickable: true, // クリック可能にする
         });
 
@@ -904,27 +978,53 @@ export default function Page() {
         polyEcoRef.current.addListener("click", () => {
           setSelectedRoute("eco");
         });
-
-        // ホバー効果を追加
-        polyEcoRef.current.addListener("mouseover", () => {
-          if (selectedRoute !== "eco") {
-            polyEcoRef.current.setOptions({
-              strokeColor: "#22c55e",
-              strokeOpacity: 0.7,
-              strokeWeight: 6,
-            });
-          }
-        });
-
-        polyEcoRef.current.addListener("mouseout", () => {
-          updateRouteLineColors();
-        });
       }
 
-      // ライン作成後に色を更新
+      // 初期状態では両方のルートをグレーで表示（色更新は不要）
+
+      // 出発地から目的地までが地図に収まるように縮尺を自動調整
       setTimeout(() => {
-        updateRouteLineColors();
-      }, 100);
+        if (originMarkerRef.current && destMarkerRef.current) {
+          const originPos = originMarkerRef.current.getPosition();
+          const destPos = destMarkerRef.current.getPosition();
+
+          if (originPos && destPos) {
+            const bounds = new google.maps.LatLngBounds();
+            bounds.extend(originPos);
+            bounds.extend(destPos);
+
+            // 境界により広い余白を追加（縮尺を小さく）
+            bounds.extend(
+              new google.maps.LatLng(
+                originPos.lat() + (destPos.lat() - originPos.lat()) * 0.3,
+                originPos.lng() + (destPos.lng() - originPos.lng()) * 0.3
+              )
+            );
+            bounds.extend(
+              new google.maps.LatLng(
+                originPos.lat() - (destPos.lat() - originPos.lat()) * 0.3,
+                originPos.lng() - (destPos.lng() - originPos.lng()) * 0.3
+              )
+            );
+
+            // 地図を境界に合わせて調整
+            map.fitBounds(bounds);
+
+            // 最小・最大ズームレベルを設定して、過度な拡大・縮小を防ぐ
+            const listener = google.maps.event.addListenerOnce(
+              map,
+              "bounds_changed",
+              () => {
+                if (map.getZoom() > 18) {
+                  map.setZoom(18);
+                } else if (map.getZoom() < 8) {
+                  map.setZoom(8);
+                }
+              }
+            );
+          }
+        }
+      }, 400);
     } catch (e) {
       console.error(e);
       setError("ルートの取得に失敗しました。");
@@ -993,9 +1093,9 @@ export default function Page() {
   };
 
   const fetchAlongSpots = async () => {
-    const sr = routes.find((r) => r.type === (selectedRoute || "fastest"));
+    const sr = routes.find((r) => r.type === selectedRoute);
     if (!sr) {
-      setError("先にルートを取得・選択してください。");
+      setError("ルートを選択してください。");
       return;
     }
     setLoadingAlong(true);
@@ -1025,47 +1125,34 @@ export default function Page() {
         }))
       );
 
-      // 後で実装予定: 選択されたソート方法に基づいてスポットをソート
-      /*
+      // 均等分布でスポットをソート
       let sortedItems = [...items];
-      
-      if (spotSortMethod !== "default" && mapRef.current) {
+
+      if (mapRef.current) {
         try {
-          const origin = originMarkerRef.current?.getPosition() || mapRef.current.getCenter();
+          const origin =
+            originMarkerRef.current?.getPosition() ||
+            mapRef.current.getCenter();
           const destination = destMarkerRef.current?.getPosition();
-          
+
           if (origin && destination) {
             const originCoords = {
               lat: origin.lat(),
-              lng: origin.lng()
+              lng: origin.lng(),
             };
             const destCoords = {
               lat: destination.lat(),
-              lng: destination.lng()
+              lng: destination.lng(),
             };
-            
-            switch (spotSortMethod) {
-              case "progress":
-                // 進行度順でソート
-                sortedItems = items.map(spot => ({
-                  ...spot,
-                  routeProgress: calculateRouteProgress(spot, sr.polyline, originCoords, destCoords)
-                })).sort((a, b) => (a.routeProgress || 0) - (b.routeProgress || 0));
-                break;
-                
-              case "distributed":
-                // 均等分布でソート
-                sortedItems = distributeSpotsEvenly(items, sr.polyline, originCoords, destCoords, 5);
-                break;
-                
-              case "balanced":
-                // バランス距離スコアでソート
-                sortedItems = items.map(spot => ({
-                  ...spot,
-                  balancedScore: calculateBalancedDistanceScore(spot, originCoords, destCoords)
-                })).sort((a, b) => (b.balancedScore || 0) - (a.balancedScore || 0));
-                break;
-            }
+
+            // 均等分布でソート
+            sortedItems = distributeSpotsEvenly(
+              items,
+              sr.polyline,
+              originCoords,
+              destCoords,
+              5
+            );
           }
         } catch (error) {
           console.warn("スポットソート処理でエラー:", error);
@@ -1073,14 +1160,13 @@ export default function Page() {
           sortedItems = items;
         }
       }
-      */
 
-      setAlongSpots(items);
+      setAlongSpots(sortedItems);
 
       // draw markers
       clearAlongMarkers();
       const map = mapRef.current!;
-      items.forEach((s) => {
+      sortedItems.forEach((s) => {
         // is_specialが真値のスポットにはHondaLogo.svgを使用
         let icon = undefined;
         if (Boolean(s.is_special)) {
@@ -1156,9 +1242,9 @@ export default function Page() {
   // Playlist
   // -----------------------------
   const proposePlaylist = async () => {
-    const sr = routes.find((r) => r.type === (selectedRoute || "fastest"));
+    const sr = routes.find((r) => r.type === selectedRoute);
     if (!sr) {
-      setError("先にルートを選択してください。");
+      setError("ルートを選択してください。");
       return;
     }
     setLoadingPlaylist(true);
@@ -1218,6 +1304,51 @@ export default function Page() {
   // -----------------------------
   // Render
   // -----------------------------
+
+  // 検索結果の表示
+  const renderSearchResults = () => {
+    if (searchResults.length === 0) return null;
+
+    // ルートが表示されている場合は検索結果を非表示
+    if (routes.length > 0) return null;
+
+    return (
+      <div className="max-w-md mx-auto px-4 mb-4">
+        <div className="bg-white rounded-xl shadow-card border border-gray-200 p-3">
+          <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2">
+            <span className="text-lg">🔍</span>
+            検索結果 ({searchResults.length}件)
+          </h3>
+          <div className="space-y-1">
+            {searchResults.map((result, index) => (
+              <div
+                key={result.place_id}
+                className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
+                onClick={() => {
+                  const coords = {
+                    lat: result.location.latitude,
+                    lng: result.location.longitude,
+                  };
+                  handlePlaceSelection(result.name, coords, result.address);
+                }}
+              >
+                <div className="w-5 h-5 bg-orange-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                  {index + 1}
+                </div>
+                <div className="font-medium text-gray-900 text-sm">
+                  {result.name}
+                </div>
+              </div>
+            ))}
+          </div>
+          <div className="mt-2 text-xs text-gray-500 text-center">
+            地図上の番号付きピンをクリックしても選択できます
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       {/* ヘッダーを固定表示 */}
@@ -1238,7 +1369,6 @@ export default function Page() {
                   value={query}
                   onChange={(e) => {
                     setQuery(e.target.value);
-                    fetchSearchSuggestions(e.target.value);
                   }}
                   onKeyPress={(e) => {
                     if (e.key === "Enter") {
@@ -1247,41 +1377,9 @@ export default function Page() {
                   }}
                   className="w-full px-4 py-3 border border-gray-300 rounded-xl focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-transparent"
                 />
-                {showSuggestions && (
-                  <div className="absolute z-40 w-full bg-white border border-gray-300 rounded-lg shadow-lg max-h-60 overflow-auto search-suggestions">
-                    {searchSuggestions.length > 0 && (
-                      <div className="p-2 bg-gray-100 text-xs text-gray-600 border-b border-gray-200">
-                        候補: {searchSuggestions.length}件
-                      </div>
-                    )}
-                    {searchSuggestions.map((s, index) => (
-                      <div
-                        key={s.place_id}
-                        className={`p-3 cursor-pointer hover:bg-gray-50 transition-colors ${
-                          index < searchSuggestions.length - 1
-                            ? "border-b border-gray-200"
-                            : ""
-                        }`}
-                        onClick={() => handleSuggestionSelect(s)}
-                        onMouseDown={(e) => {
-                          e.preventDefault();
-                          e.stopPropagation();
-                        }}
-                      >
-                        <div className="font-medium text-gray-900 mb-1">
-                          {s.name}
-                        </div>
-                        <div className="text-sm text-gray-600">{s.address}</div>
-                      </div>
-                    ))}
-                  </div>
-                )}
               </div>
               <button
                 onClick={() => {
-                  // 検索ボタンクリック時にも候補リストを非表示
-                  setShowSuggestions(false);
-                  setSearchSuggestions([]);
                   handleSearch();
                 }}
                 disabled={!query.trim() || loadingRoutes}
@@ -1293,6 +1391,9 @@ export default function Page() {
             </div>
           </div>
         </div>
+
+        {/* 検索結果の表示 */}
+        {renderSearchResults()}
 
         {/* マップ */}
         <div className="max-w-md mx-auto px-4 mb-4">
@@ -1372,7 +1473,7 @@ export default function Page() {
                       selectedRoute === r.type
                         ? r.type === "fastest"
                           ? "border-blue-500 bg-blue-50"
-                          : "border-green-500 bg-green-50"
+                          : "border-pink-500 bg-pink-50"
                         : "border-gray-300 bg-gray-50 opacity-60"
                     }`}
                   >
@@ -1402,84 +1503,38 @@ export default function Page() {
         {/* アクションボタン */}
         {routes.length > 0 && (
           <div className="max-w-md mx-auto px-4 mb-4">
-            <div className="flex flex-wrap gap-2 justify-center">
-              <button
-                onClick={fetchAlongSpots}
-                disabled={!routes.length}
-                className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                沿線スポット表示
-              </button>
-              <button
-                onClick={proposePlaylist}
-                disabled={!selectedRouteObj}
-                className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-              >
-                プレイリスト提案
-              </button>
-              <button
-                onClick={() => alert("後日実装予定")}
-                disabled={!selectedRouteObj}
-                className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700"
-              >
-                出発
-              </button>
-            </div>
-
-            {/* スポットソート方法選択 */}
-            {alongSpots.length > 0 && (
-              <div className="mt-3 p-3 bg-gray-50 rounded-lg">
-                <div className="text-sm font-medium text-gray-700 mb-2">
-                  スポット表示順序:
+            {loadingPlaylist ? (
+              <div className="flex justify-center">
+                <div className="px-6 py-4 bg-purple-100 text-purple-800 rounded-lg border border-purple-200">
+                  <span className="flex items-center gap-2 text-lg font-medium">
+                    <span className="text-2xl">♬</span>
+                    プレイリストを構築中...
+                  </span>
                 </div>
-                <div className="flex flex-wrap gap-2">
-                  <button
-                    onClick={() => false}
-                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                      false
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
-                    }`}
-                  >
-                    デフォルト
-                  </button>
-                  <button
-                    onClick={() => false}
-                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                      false
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
-                    }`}
-                  >
-                    進行度順
-                  </button>
-                  <button
-                    onClick={() => false}
-                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                      false
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
-                    }`}
-                  >
-                    均等分布
-                  </button>
-                  <button
-                    onClick={() => false}
-                    className={`px-3 py-1 text-xs rounded-full transition-colors ${
-                      false
-                        ? "bg-blue-600 text-white"
-                        : "bg-white text-gray-600 border border-gray-300 hover:bg-gray-100"
-                    }`}
-                  >
-                    バランス重視
-                  </button>
-                </div>
-                <div className="text-xs text-gray-500 mt-2">
-                  {false && "APIのデフォルト順序"}
-                  {false && "出発地から目的地への進行度順"}
-                  {false && "ルート全体に均等に分布"}
-                  {false && "出発地と目的地の距離バランス重視"}
-                </div>
+              </div>
+            ) : (
+              <div className="flex flex-wrap gap-2 justify-center">
+                <button
+                  onClick={fetchAlongSpots}
+                  disabled={!routes.length}
+                  className="px-4 py-2 bg-green-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  沿線スポット表示
+                </button>
+                <button
+                  onClick={proposePlaylist}
+                  disabled={!selectedRouteObj}
+                  className="px-4 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                >
+                  プレイリスト提案
+                </button>
+                <button
+                  onClick={() => alert("後日実装予定")}
+                  disabled={!selectedRouteObj}
+                  className="px-4 py-2 bg-red-600 text-white rounded-lg text-sm font-medium disabled:opacity-50 disabled:cursor-not-allowed hover:bg-red-700"
+                >
+                  出発
+                </button>
               </div>
             )}
           </div>
@@ -1654,12 +1709,23 @@ export default function Page() {
             <div>
               {loadingRoutes && "ルート取得中…"}
               {loadingLocation && "現在地取得中…"}
-              {error && <span className="text-red-600 ml-2">{error}</span>}
+              {error && (
+                <span
+                  className={`ml-2 ${
+                    error.includes("地図上をクリック")
+                      ? "text-blue-600 font-medium"
+                      : "text-red-600"
+                  }`}
+                >
+                  {error}
+                </span>
+              )}
             </div>
- 
           </div>
         </div>
       </main>
+
+      {/* 出発地入力モーダル */}
 
       {/* プレイリスト詳細モーダル */}
       {showPlaylistModal && (

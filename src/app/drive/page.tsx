@@ -1656,7 +1656,7 @@ export default function Page() {
               {loadingLocation && "現在地取得中…"}
               {error && <span className="text-red-600 ml-2">{error}</span>}
             </div>
-            <div>{getEnvDisplay()}</div>
+ 
           </div>
         </div>
       </main>

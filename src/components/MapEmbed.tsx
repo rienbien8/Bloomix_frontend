@@ -344,6 +344,9 @@ export default function MapEmbed({
         }
         // 検索後は再検索ボタンを非表示
         setShowRefreshButton(false);
+
+        // 検索後にスポットを読み込み
+        await loadSpots();
       }
     } catch (e) {
       console.error(e);
@@ -361,6 +364,14 @@ export default function MapEmbed({
       const bbox = mapToBBox(mapRef.current);
       if (bbox) {
         onBBoxChange(bbox);
+      }
+    }
+
+    // 再検索時に中心位置も通知（reason: "search"として）
+    if (onCenterChange) {
+      const center = mapRef.current.getCenter();
+      if (center) {
+        onCenterChange({ lat: center.lat(), lng: center.lng() }, "search");
       }
     }
 

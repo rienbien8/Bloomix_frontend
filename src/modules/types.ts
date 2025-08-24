@@ -34,6 +34,7 @@ export type Content = {
   youtube_id?: string | null;
   lang?: string | null;
   thumbnail_url?: string | null;
+  oshi_name?: string | null; // 推しの名前
   created_at?: string;
   updated_at?: string;
   duration_min?: number | null;

@@ -43,7 +43,7 @@ export default function BottomNav() {
           className={`flex flex-col items-center gap-1 transition-colors ${
             isActive("/follow") ? "text-brand-dark" : "hover:text-gray-700"
           }`}
-          onClick={() => handleNavigation("/follow")}
+          onClick={() => handleNavigation("/followartists")}
         >
           <Heart className="w-6 h-6" />
           <span className="text-[10px]">フォロー</span>

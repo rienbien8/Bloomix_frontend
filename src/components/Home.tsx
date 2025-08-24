@@ -21,7 +21,6 @@ export default function Home() {
     lat: number;
     lng: number;
   } | null>(null);
-  const [mapBBox, setMapBBox] = useState<string | null>(null);
   const [isInitialLoad, setIsInitialLoad] = useState(true);
   const [isSpotsPopupOpen, setIsSpotsPopupOpen] = useState(false);
   const router = useRouter();
@@ -39,22 +38,6 @@ export default function Home() {
     });
   }, []);
 
-  // 地図の表示範囲（BBox）が変更された時にスポットを再取得
-  useEffect(() => {
-    if (mapBBox && mapCenter) {
-      Api.spots(mapBBox)
-        .then((response) => {
-          if (response?.items) {
-            setSpots(response.items);
-          }
-        })
-        .catch((error) => {
-          console.warn("スポット取得に失敗:", error);
-          // エラー時は既存のスポットを維持
-        });
-    }
-  }, [mapBBox]);
-
   // 地図の中心位置が変更された時にスポットを再取得（初期表示時と検索時のみ）
   const handleMapCenterChange = useCallback(
     (
@@ -65,16 +48,13 @@ export default function Home() {
 
       // 初期表示時または検索時のみスポットを再取得
       if (reason === "initial" || reason === "search") {
-        // BBoxが利用可能な場合はそれを使用、そうでない場合は地図中心から半径約1kmのBBoxを作成
-        let bbox: string;
-        if (mapBBox) {
-          bbox = mapBBox;
-        } else {
-          const lat = center.lat;
-          const lng = center.lng;
-          const delta = 0.01; // 約1km
-          bbox = `${lat - delta},${lng - delta},${lat + delta},${lng + delta}`;
-        }
+        // 地図中心から半径約1kmのBBoxを作成
+        const lat = center.lat;
+        const lng = center.lng;
+        const delta = 0.01; // 約1km
+        const bbox = `${lat - delta},${lng - delta},${lat + delta},${
+          lng + delta
+        }`;
 
         Api.spots(bbox)
           .then((response) => {
@@ -88,13 +68,13 @@ export default function Home() {
           });
       }
     },
-    [mapBBox]
+    []
   );
 
   return (
     <div className="min-h-screen bg-gray-50 pb-24 relative">
       {/* ヘッダーを固定表示 */}
-      <div className="fixed top-0 left-0 w-full z-50">
+      <div className="fixed top-0 left-0 w-full z-10">
         <Header />
       </div>
       {/* ヘッダー分の余白を追加 */}
@@ -104,7 +84,6 @@ export default function Home() {
             height="320px"
             rounded="1rem"
             onCenterChange={handleMapCenterChange}
-            onBBoxChange={setMapBBox}
           />
         </div>
 
@@ -127,7 +106,10 @@ export default function Home() {
             )}
         </div>
 
-        <SectionHeader title="My推しコンテンツ" />
+        <SectionHeader
+          title="My推しコンテンツ"
+          onMore={() => router.push("/contents")}
+        />
         <div className="max-w-md mx-auto px-4 space-y-3 mb-6">
           {(contents ?? Array.from({ length: 3 }))
             .slice(0, 5)

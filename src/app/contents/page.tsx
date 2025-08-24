@@ -1,183 +1,177 @@
-"use client";
+'use client';
 
-import { useEffect, useMemo, useState } from "react";
-import Header from "../../components/Header";
-import BottomNav from "../../components/BottomNav";
-import Container from "../../components/Container";
-import BottomSheet from "../../components/BottomSheet";
-import ContentListItem from "../../components/ContentListItem";
-import { getContents } from "../../modules/api";
-import type { ContentItem } from "../../modules/types";
+import { useEffect, useMemo, useState } from 'react';
+import { useRouter } from 'next/navigation';  // ここを追加
+import Header from '@/components/Header';
+import BottomNav from '@/components/BottomNav';
+
+/** コンテンツ型：artistId を追加（フォロー判定に使用） */
+type Content = {
+  id: string;
+  title: string;
+  duration: string;
+  thumbnail: string;          // 画像パス（/public 配下推奨）
+  url: string;                // 外部リンク（YouTube / Spotify）
+  source: 'youtube' | 'spotify';
+  artistId?: string; // ← フォロー一覧のアーティストIDと一致させる
+};
+
+/** モック（例）：artistId を必ず付与しておく */
+const mockContents: Content[] = [
+  {
+    id: 'c1',
+    title: '新曲「ドライブソング」',
+    duration: '3分',
+    thumbnail: '/images/content01.jpg', // 無ければ後述のfallbackが効きます
+    url: 'https://www.youtube.com/watch?v=dQw4w9WgXcQ',
+    source: 'youtube',
+    artistId: 'a1',
+  },
+  {
+    id: 'c2',
+    title: 'ハイライト映像',
+    duration: '5分',
+    thumbnail: '/images/content02.jpg',
+    url: 'https://open.spotify.com/track/7GhIk7Il098yCjg4BQjzvb',
+    source: 'spotify',
+    artistId: 'a2',
+  },
+  {
+    id: 'c3',
+    title: 'TV番組「春の旅」',
+    duration: '5分',
+    thumbnail: '/images/content03.jpg',
+    url: 'https://www.youtube.com/watch?v=oHg5SJYRHA0',
+    source: 'youtube',
+    artistId: 'a3',
+  },
+  // 追加のモックデータ...
+];
 
 export default function ContentsPage() {
-  // Data
-  const [items, setItems] = useState<ContentItem[]>([]);
+  const router = useRouter();  // routerを定義
+  const [contents, setContents] = useState<Content[]>([]);
   const [loading, setLoading] = useState(true);
+  const [page, setPage] = useState(1);  // ページ管理のためのステート
 
-  // UI state
-  const [page, setPage] = useState(1);
-  const [selected, setSelected] = useState<ContentItem | null>(null);
-  const [query, setQuery] = useState("");
-
-  // Config
-  const pageSize = 10;
-
-  // Derived
-  const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
-    if (!q) return items;
-    return items.filter((it) => it.title?.toLowerCase().includes(q));
-  }, [items, query]);
-
-  const maxPage = Math.max(1, Math.ceil(filtered.length / pageSize));
-  const view = useMemo(
-    () => filtered.slice((page - 1) * pageSize, page * pageSize),
-    [filtered, page]
-  );
-
-  // Fetch
   useEffect(() => {
-    (async () => {
+    // ここをAPI呼び出しに差し替え
+    const fetchContents = async () => {
       try {
-        setLoading(true);
-        const res = await getContents({ limit: 200 }); // 引数を渡す
-        setItems(Array.isArray(res) ? res : []);
-      } finally {
+        const response = await fetch(`/api/v1/users/{user_id}/oshis?page=${page}`);
+        const data = await response.json();
+        setContents(data);  // APIレスポンスに基づいてコンテンツをセット
+        setLoading(false);
+      } catch (error) {
+        console.error("Error fetching contents:", error);
+        setContents(mockContents);  // APIエラー時はモックデータを使用
         setLoading(false);
       }
-    })().catch(() => setLoading(false));
-  }, []);
+    };
+    fetchContents();
+  }, [page]);
 
-  // Reset to first page when filter changes
-  useEffect(() => {
-    setPage(1);
-  }, [query]);
+  const handleBack = () => {
+    if (history.length > 1) router.back();
+    else router.push('/');
+  };
+
+  // 10件ごとにページネーション
+  const paginatedContents = contents.slice((page - 1) * 10, page * 10);
 
   return (
-    <div className="min-h-screen bg-white">
-      {/* 固定ヘッダー */}
+    <div className="min-h-screen bg-gray-50 pb-24">
       <Header />
 
-      {/* 上余白=ヘッダー, 下余白=ボトムナビ */}
-      <main className="pt-14 pb-20">
-        <Container>
-          {/* タイトル & 検索（スマホ対応） */}
-          <header className="sticky top-14 z-10 bg-white/85 backdrop-blur">
-            <div className="flex items-center justify-between py-3">
-              <h1 className="text-[15px] font-semibold text-zinc-800">
-                My推しコンテンツ
-              </h1>
-            </div>
-            <div className="pb-2">
-              <label className="block">
-                <input
-                  type="search"
-                  inputMode="search"
-                  placeholder="コンテンツを検索"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  className="w-full rounded-xl border px-3 py-2 text-[14px] outline-none placeholder:text-zinc-400"
-                />
-              </label>
-            </div>
-          </header>
+      <main className="scroll-smooth">
+        <div className="max-w-md mx-auto px-4 pt-4">
+          {/* 見出し行 */}
+          <div className="flex items-center gap-3 mb-4">
+            <button
+              onClick={handleBack}
+              className="text-sky-500 hover:text-gray-800"
+              aria-label="戻る"
+            >
+              ← 戻る
+            </button>
+            <h1 className="text-xl font-bold text-gray-800">My推しコンテンツ</h1>
+          </div>
 
-          {/* リスト（白・角丸・影） */}
-          <section className="space-y-3 pt-2">
-            {loading &&
-              Array.from({ length: 6 }).map((_, i) => (
-                <div key={i} className="h-16 w-full animate-pulse rounded-2xl bg-zinc-100" />
+          {/* リスト */}
+          {loading ? (
+            <div className="space-y-3">
+              {Array.from({ length: 3 }).map((_, i) => (
+                <div key={i} className="h-20 bg-white rounded-2xl shadow-sm animate-pulse" />
               ))}
+            </div>
+          ) : (
+            <ul className="space-y-4">
+              {paginatedContents.map((c) => (
+                <li key={c.id}>
+                  <a
+                    href={c.url}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="flex items-center justify-between gap-3 bg-white rounded-2xl px-3 py-3 shadow-sm hover:shadow-md transition"
+                  >
+                    {/* 左：サムネ + タイトル */}
+                    <div className="flex items-center gap-3">
+                      {c.thumbnail ? (
+                        <img
+                          src={c.thumbnail}
+                          alt={c.title}
+                          className="w-14 h-14 rounded-xl object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display = 'none';
+                          }}
+                        />
+                      ) : (
+                        <div className="w-14 h-14 rounded-xl bg-gray-200 grid place-items-center text-gray-500">
+                          🎵
+                        </div>
+                      )}
 
-            {!loading &&
-              view.map((c) => (
-                <ContentListItem
-                  key={c.id}
-                  item={c}
-                  onClick={() => setSelected(c)}
-                  onPlay={() => setSelected(c)}
-                />
+                      <div className="flex flex-col">
+                        <p className="text-base font-semibold text-gray-900">{c.title}</p>
+                        <span className="text-sm text-gray-500">{c.duration}</span>
+                      </div>
+                    </div>
+
+                    {/* 右：再生ボタン風（外部リンク） */}
+                    <div
+                      className="shrink-0 w-10 h-10 rounded-full bg-gray-100 grid place-items-center"
+                      aria-hidden
+                    >
+                      {/* 再生アイコン：シンプルな▶︎ */}
+                      <span className="translate-x-[1px]">▶︎</span>
+                    </div>
+                  </a>
+                </li>
               ))}
-
-            {!loading && view.length === 0 && (
-              <div className="py-16 text-center text-sm text-zinc-500">
-                コンテンツがありません
-              </div>
-            )}
-          </section>
-
-          {/* ページャ */}
-          {!loading && filtered.length > pageSize && (
-            <nav className="sticky bottom-16 mt-6 flex items-center justify-center gap-2 bg-gradient-to-t from-white via-white/70 to-transparent py-3">
-              <button
-                className="rounded-lg border px-3 py-1 text-sm"
-                onClick={() => setPage(1)}
-                disabled={page === 1}
-              >
-                最初に戻る
-              </button>
-              <button
-                className="rounded-lg border px-3 py-1 text-sm"
-                onClick={() => setPage((p) => Math.max(1, p - 1))}
-                disabled={page === 1}
-              >
-                戻る
-              </button>
-              <span className="text-sm text-zinc-600">
-                {page} / {maxPage}
-              </span>
-              <button
-                className="rounded-lg border px-3 py-1 text-sm"
-                onClick={() => setPage((p) => Math.min(maxPage, p + 1))}
-                disabled={page === maxPage}
-              >
-                次へ
-              </button>
-            </nav>
+            </ul>
           )}
-        </Container>
+
+          {/* ページネーション */}
+          <div className="flex justify-center gap-4 mt-4">
+            <button
+              onClick={() => setPage(page - 1)}
+              disabled={page <= 1}
+              className="px-4 py-2 bg-gray-300 text-gray-600 rounded-lg"
+            >
+              前へ
+            </button>
+            <button
+              onClick={() => setPage(page + 1)}
+              disabled={contents.length <= page * 10}
+              className="px-4 py-2 bg-gray-300 text-gray-600 rounded-lg"
+            >
+              次へ
+            </button>
+          </div>
+        </div>
       </main>
 
-      {/* 固定ボトムナビ */}
       <BottomNav />
-
-      {/* 詳細 BottomSheet（モバイル向けポップアップ） */}
-      <BottomSheet
-        open={!!selected}
-        onClose={() => setSelected(null)}
-        heightPct={70}
-        title="コンテンツ詳細"
-      >
-        {selected && (
-          <div className="space-y-3">
-            <div className="text-lg font-semibold">{selected.title}</div>
-            <dl className="grid grid-cols-3 gap-x-2 text-sm">
-              <dt className="text-zinc-500">ID</dt>
-              <dd className="col-span-2 break-all">{selected.id}</dd>
-              <dt className="text-zinc-500">Spot</dt>
-              <dd className="col-span-2 break-all">{selected.spot_id}</dd>
-              <dt className="text-zinc-500">Oshi</dt>
-              <dd className="col-span-2 break-all">{selected.oshi_id ?? "-"}</dd>
-              <dt className="text-zinc-500">Duration</dt>
-              <dd className="col-span-2">{selected.duration_sec ?? "-"}</dd>
-            </dl>
-            {selected.url && (
-              <a
-                href={selected.url}
-                target="_blank"
-                rel="noreferrer"
-                className="inline-flex items-center rounded-lg border px-3 py-2 text-sm text-blue-600"
-              >
-                外部リンクを開く
-              </a>
-            )}
-          </div>
-        )}
-      </BottomSheet>
     </div>
   );
-}
-
-export async function getContents(params: { limit: number }): Promise<ContentItem[]> {
-  // 関数の実装
 }

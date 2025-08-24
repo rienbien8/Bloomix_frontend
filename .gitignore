@@ -88,3 +88,6 @@ jspm_packages/
 .next/
 out/
 .next/cache/
+
+#ステージング解除できなかったので緊急的措置
+.github/workflows/main_app-002-gen10-step3-2-node-oshima7.yml

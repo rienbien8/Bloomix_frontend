@@ -26,10 +26,10 @@ export default function ArtistCard({ artist, isFollowing, onToggleFollow }: Prop
       <button
         onClick={onToggleFollow}
         className={`px-3 py-1 rounded-full text-sm font-medium ${
-          isFollowing ? 'bg-pink-500 text-white' : 'bg-gray-200 text-gray-700'
+          isFollowing ? 'bg-gray-200 text-white' : 'bg-gray-200 text-gray-700'
         }`}
       >
-        {isFollowing ? 'フォロー中' : 'フォロー'}
+        {isFollowing ? '💗' : '🤍'}
       </button>
     </div>
   );

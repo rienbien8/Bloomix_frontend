@@ -504,10 +504,97 @@ export default function Page() {
     };
   }, []);
 
+  // URLクエリパラメータからスポット情報を取得して目的地を設定
+  useEffect(() => {
+    // 地図の初期化が完了するまで待機
+    const checkMapAndProcessQuery = () => {
+      if (!mapRef.current) {
+        // 地図がまだ初期化されていない場合は少し待ってから再試行
+        setTimeout(checkMapAndProcessQuery, 100);
+        return;
+      }
+
+      console.log("🗺️ 地図初期化完了、クエリパラメータをチェック中...");
+
+      // URLSearchParamsを使用してクエリパラメータを取得
+      const urlParams = new URLSearchParams(window.location.search);
+      const lat = urlParams.get("lat");
+      const lng = urlParams.get("lng");
+      const name = urlParams.get("name");
+      const address = urlParams.get("address");
+
+      console.log("🔍 クエリパラメータ:", { lat, lng, name, address });
+
+      if (lat && lng && name) {
+        const coords = {
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+        };
+
+        console.log("🎯 目的地を設定中:", { name, coords, address });
+
+        // 目的地を設定
+        handlePlaceSelection(name, coords, address || undefined, true);
+
+        // クエリパラメータをクリア（ブラウザの履歴に残らないように）
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, "", newUrl);
+
+        console.log("✅ 目的地設定完了");
+      } else {
+        console.log("ℹ️ クエリパラメータなし");
+      }
+    };
+
+    // 地図の初期化完了を待ってからクエリパラメータを処理
+    checkMapAndProcessQuery();
+  }, []); // 空の依存配列で、コンポーネントマウント時に1回だけ実行
+
   // ページ表示時に現在地を取得
   useEffect(() => {
     getCurrentLocation();
   }, []);
+
+  // 現在地が取得された後にクエリパラメータを再チェック
+  useEffect(() => {
+    if (!currentLocation || !mapRef.current) return;
+
+    // URLSearchParamsを使用してクエリパラメータを取得
+    const urlParams = new URLSearchParams(window.location.search);
+    const lat = urlParams.get("lat");
+    const lng = urlParams.get("lng");
+    const name = urlParams.get("name");
+    const address = urlParams.get("address");
+
+    if (lat && lng && name) {
+      console.log("🔄 現在地取得後、クエリパラメータを再処理:", {
+        lat,
+        lng,
+        name,
+      });
+
+      const coords = {
+        lat: parseFloat(lat),
+        lng: parseFloat(lng),
+      };
+
+      // 目的地を設定
+      handlePlaceSelection(name, coords, address || undefined, true);
+
+      // クエリパラメータをクリア
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, "", newUrl);
+
+      // 現在地が取得されたので、自動的にルート案内を開始
+      console.log("🚀 現在地取得完了、自動的にルート案内を開始");
+      setTimeout(() => {
+        setCenter(currentLocation);
+        createOriginMarker(currentLocation);
+        // ルートを取得
+        fetchRoutes();
+      }, 1000); // 目的地設定の処理が完了するまで少し待機
+    }
+  }, [currentLocation]);
 
   // 地図外をクリックした時に候補リストを非表示にする
   useEffect(() => {
@@ -524,6 +611,8 @@ export default function Page() {
   // -----------------------------
   // 現在地を取得
   const getCurrentLocation = async () => {
+    console.log("📍 現在地取得開始");
+
     if (!navigator.geolocation) {
       setError(
         "お使いのブラウザは位置情報をサポートしていません。東京駅を現在地として設定します。"
@@ -532,6 +621,7 @@ export default function Page() {
       const tokyoStationCoords = { lat: 35.6812362, lng: 139.7671248 };
       setCurrentLocation(tokyoStationCoords);
       setCenter(tokyoStationCoords);
+      console.log("📍 東京駅を現在地として設定:", tokyoStationCoords);
 
       // 地図が初期化済みの場合は中心を更新とマーカー作成
       if (mapRef.current) {
@@ -561,6 +651,7 @@ export default function Page() {
         lng: position.coords.longitude,
       };
 
+      console.log("📍 現在地取得成功:", coords);
       setCurrentLocation(coords);
       setCenter(coords);
 
@@ -621,16 +712,30 @@ export default function Page() {
   const handlePlaceSelection = (
     name: string,
     coords: { lat: number; lng: number },
-    address?: string // 住所パラメータを追加
+    address?: string, // 住所パラメータを追加
+    isFromQuery: boolean = false // クエリパラメータからの自動設定かどうか
   ) => {
+    console.log("🎯 handlePlaceSelection 呼び出し:", {
+      name,
+      coords,
+      address,
+      isFromQuery,
+    });
+
     setError(null);
 
     const map = mapRef.current;
-    if (!map) return;
+    if (!map) {
+      console.error("❌ 地図が初期化されていません");
+      return;
+    }
+
+    console.log("✅ 地図が利用可能、目的地マーカーを作成中...");
 
     // 目的地マーカーを作成
     if (destMarkerRef.current) {
       destMarkerRef.current.setMap(null);
+      console.log("🗑️ 既存の目的地マーカーを削除");
     }
 
     destMarkerRef.current = new google.maps.Marker({
@@ -648,6 +753,8 @@ export default function Page() {
         anchor: new google.maps.Point(16, 32),
       },
     });
+
+    console.log("📍 目的地マーカー作成完了:", { name, coords });
 
     // 目的地マーカーにクリックイベントを追加
     destMarkerRef.current.addListener("click", () => {
@@ -753,6 +860,35 @@ export default function Page() {
     } else {
       map.setZoom(13); // 現在地がない場合はデフォルト
     }
+
+    // 目的地設定の成功をユーザーに通知
+    setError(null);
+    console.log("�� 目的地設定完了:", name);
+
+    // クエリパラメータからの自動設定の場合は、自動的にルート案内を開始
+    if (isFromQuery && currentLocation) {
+      console.log(
+        "🚀 クエリパラメータからの自動設定のため、ルート案内を自動開始"
+      );
+      setTimeout(() => {
+        setCenter(currentLocation);
+        createOriginMarker(currentLocation);
+        // ルートを取得
+        fetchRoutes();
+      }, 500); // 少し遅延を入れてからルート取得を開始
+    } else if (isFromQuery && !currentLocation) {
+      console.log(
+        "⏳ 現在地がまだ取得されていません。現在地取得後にルート案内を開始します。"
+      );
+    }
+
+    // 少し遅延を入れてから地図の中心を確実に設定
+    setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.setCenter(coords);
+        console.log("🗺️ 地図の中心を目的地に移動:", coords);
+      }
+    }, 100);
 
     // 既存のルートと関連データをクリア
     setRoutes([]);

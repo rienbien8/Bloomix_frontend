@@ -5,7 +5,7 @@ export default function Header() {
         <img
           src="https://raw.githubusercontent.com/rienbien8/Bloomix_frontend/main/τotoi_resize.png"
           alt="Totoi Drive ロゴ"
-          className="h-[100px] -mt-6 -mb-6"
+          className="h-11 mt-1 mb-3"
         />
       </div>
     </header>

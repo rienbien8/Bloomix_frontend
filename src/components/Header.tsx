@@ -3,7 +3,7 @@ export default function Header() {
     <header className="sticky top-0 z-[9999] bg-gradient-to-b from-brand-sky to-brand-sunrise text-white px-4 pt-4 pb-3">
       <div className="max-w-md mx-auto flex flex-col items-center">
         <img
-          src="https://raw.githubusercontent.com/rienbien8/Bloomix_frontend/main/τotoi.png"
+          src="https://raw.githubusercontent.com/rienbien8/Bloomix_frontend/main/τotoi_resize.png"
           alt="Totoi Drive ロゴ"
           className="h-[100px] -mt-6 -mb-6"
         />

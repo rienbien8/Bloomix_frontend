@@ -158,16 +158,58 @@ export default function MapEmbed({
         }
       );
 
+      // デバッグ: APIレスポンスを確認
+      console.log("MapEmbed APIレスポンス:", data);
+      console.log(
+        "Homeスポットデータ:",
+        data.items.map((s) => ({
+          id: s.id,
+          name: s.name,
+          is_special: s.is_special,
+          type: typeof s.is_special,
+          value: s.is_special,
+        }))
+      );
+
       // 既存マーカー掃除
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
 
       const google = (window as any).google as typeof window.google;
       data.items.forEach((s) => {
+        // is_special=1のスポットにはHondaLogo.svgを使用
+        let icon = undefined;
+        console.log(`スポット ${s.name} (ID: ${s.id}) のis_special判定:`, {
+          value: s.is_special,
+          type: typeof s.is_special,
+          isEqualToOne: s.is_special === 1,
+          isTruthy: Boolean(s.is_special),
+        });
+
+        if (Boolean(s.is_special)) {
+          console.log(`✅ ${s.name} にHondaLogo.svgを設定`);
+          icon = {
+            url: "/HondaLogo.svg",
+            scaledSize: new google.maps.Size(28, 28),
+            anchor: new google.maps.Point(16, 16),
+          };
+        } else {
+          console.log(
+            `❌ ${s.name} はstar_logo.svg（is_special: ${s.is_special}）`
+          );
+          icon = {
+            url: "/star_logo.svg",
+            scaledSize: new google.maps.Size(32, 32),
+            anchor: new google.maps.Point(16, 16),
+          };
+        }
+
         const marker = new google.maps.Marker({
           map: mapRef.current!,
           position: { lat: s.lat, lng: s.lng },
           title: s.name,
+          icon: icon,
+          zIndex: Boolean(s.is_special) ? 1000 : 1, // Specialロゴを前面に表示
         });
         marker.addListener("click", async () => {
           try {
@@ -302,6 +344,9 @@ export default function MapEmbed({
         }
         // 検索後は再検索ボタンを非表示
         setShowRefreshButton(false);
+
+        // 検索後にスポットを読み込み
+        await loadSpots();
       }
     } catch (e) {
       console.error(e);
@@ -319,6 +364,14 @@ export default function MapEmbed({
       const bbox = mapToBBox(mapRef.current);
       if (bbox) {
         onBBoxChange(bbox);
+      }
+    }
+
+    // 再検索時に中心位置も通知（reason: "search"として）
+    if (onCenterChange) {
+      const center = mapRef.current.getCenter();
+      if (center) {
+        onCenterChange({ lat: center.lat(), lng: center.lng() }, "search");
       }
     }
 

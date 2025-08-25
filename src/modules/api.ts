@@ -20,8 +20,19 @@ export const Api = {
       `/api/v1/spots?bbox=${bboxParam}`
     );
   },
-  oshis: () => get<Oshi[]>(`/api/v1/oshis`),
-  contents: () => get<Content[]>(`/api/v1/contents`),
+  oshis: () => get<{ count: number; items: Oshi[] }>(`/api/v1/oshis`),
+  contents: (params?: { oshi_id?: number; limit?: number }) => {
+    const searchParams = new URLSearchParams();
+    if (params?.oshi_id)
+      searchParams.append("oshi_id", params.oshi_id.toString());
+    if (params?.limit) searchParams.append("limit", params.limit.toString());
+
+    const queryString = searchParams.toString();
+    const url = queryString
+      ? `/api/v1/contents?${queryString}`
+      : "/api/v1/contents";
+    return get<{ count: number; items: Content[] }>(url);
+  },
   // ルートは今回のホーム画面では未使用だが、将来のために定義
   routes: () => get<any[]>(`/api/v1/routes`),
 };

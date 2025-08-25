@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from "next/server";
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { user_id: string; oshi_id: string } }
+  { params }: { params: Record<string, string> }
 ) {
   try {
     const { user_id, oshi_id } = params;
 
-    // バックエンドのFastAPIにリクエストを転送
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    const backendUrl =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+
     const response = await fetch(
       `${backendUrl}/api/v1/users/${user_id}/oshis/${oshi_id}`,
       {
@@ -38,8 +39,9 @@ export async function DELETE(
   try {
     const { user_id, oshi_id } = params;
 
-    // バックエンドのFastAPIにリクエストを転送
-    const backendUrl = process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+    const backendUrl =
+      process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+
     const response = await fetch(
       `${backendUrl}/api/v1/users/${user_id}/oshis/${oshi_id}`,
       {

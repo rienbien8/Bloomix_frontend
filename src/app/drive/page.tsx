@@ -108,7 +108,17 @@ function debounce<T extends (...args: any[]) => void>(fn: T, wait = 300) {
 
 function toMinLabel(min: number | null | undefined) {
   if (min == null) return "-";
-  return `${Math.round(min)}分`;
+  const minutes = Math.round(min);
+  if (minutes >= 60) {
+    const hours = Math.floor(minutes / 60);
+    const remainingMinutes = minutes % 60;
+    if (remainingMinutes === 0) {
+      return `${hours}時間`;
+    } else {
+      return `${hours}時間${remainingMinutes}分`;
+    }
+  }
+  return `${minutes}分`;
 }
 
 function getEnvDisplay() {
@@ -365,12 +375,21 @@ export default function Page() {
 
   // 検索結果のピンをクリアする関数
   const clearSearchResultMarkers = () => {
-    searchResultMarkers.forEach((marker) => marker.setMap(null));
+    console.log(
+      "🔍 clearSearchResultMarkers 呼び出し - 現在のマーカー数:",
+      searchResultMarkers.length
+    );
+    searchResultMarkers.forEach((marker) => {
+      console.log("🗑️ マーカーを削除:", marker);
+      marker.setMap(null);
+    });
     setSearchResultMarkers([]);
+    console.log("✅ 検索結果マーカーをクリア完了");
   };
 
   // 検索結果のピンを作成する関数
   const createSearchResultMarkers = (results: SearchResult[]) => {
+    console.log("🔍 createSearchResultMarkers 開始 - 結果数:", results.length);
     clearSearchResultMarkers();
 
     if (!mapRef.current) return;
@@ -405,18 +424,78 @@ export default function Page() {
 
       // クリックイベントを追加
       marker.addListener("click", () => {
-        // 選択された候補を目的地として設定
-        handlePlaceSelection(result.name, coords, result.address);
+        // InfoWindowで場所情報を表示
+        if (infoRef.current && mapRef.current) {
+          const content = `
+            <div style="min-width: 250px; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+              <div style="margin-bottom: 16px;">
+                <div style="font-weight: 600; color: #333; font-size: 16px; margin-bottom: 6px;">
+                  ${result.name}
+                </div>
+              </div>
+              <button 
+                id="set-destination-btn"
+                style="
+                  width: 100%;
+                  padding: 10px 16px;
+                  background: #38BDF8;
+                  color: white;
+                  border: none;
+                  border-radius: 8px;
+                  font-weight: 500;
+                  font-size: 14px;
+                  cursor: pointer;
+                  transition: background 0.2s;
+                "
+                onmouseover="this.style.background='#0EA5E9'"
+                onmouseout="this.style.background='#38BDF8'"
+              >
+                目的地に設定
+              </button>
+            </div>
+          `;
 
-        // 検索結果のピンをクリア
-        clearSearchResultMarkers();
-        setSearchResults([]);
+          infoRef.current.setContent(content);
+          infoRef.current.open(mapRef.current, marker);
+
+          // 目的地に設定ボタンのクリックイベントを設定
+          setTimeout(() => {
+            const setDestinationBtn = document.getElementById(
+              "set-destination-btn"
+            );
+            if (setDestinationBtn) {
+              setDestinationBtn.addEventListener("click", () => {
+                // 目的地を設定
+                handlePlaceSelection(result.name, coords, result.address);
+
+                // 現在地から出発してルートを表示
+                if (currentLocation) {
+                  setCenter(currentLocation);
+                  createOriginMarker(currentLocation);
+                  // 検索結果のマーカーをクリア
+                  clearSearchResultMarkers();
+                  setSearchResults([]);
+                  // ルートを取得
+                  fetchRoutes();
+                } else {
+                  setError(
+                    "現在地が取得できません。現在地の取得をお待ちください。"
+                  );
+                }
+                // 情報ウィンドウを閉じる
+                infoRef.current?.close();
+              });
+            }
+          }, 100);
+        }
       });
 
       markers.push(marker);
     });
 
+    console.log("🔍 作成されたマーカー数:", markers.length);
     setSearchResultMarkers(markers);
+    console.log("✅ 検索結果マーカーの設定完了");
   };
 
   // -----------------------------
@@ -921,6 +1000,19 @@ export default function Page() {
       polyEcoRef.current = null;
     }
 
+    // 検索結果の数字マーカーをクリア
+    console.log("🎯 目的地設定時のマーカークリア処理");
+    clearSearchResultMarkers();
+    setSearchResults([]);
+
+    // 少し遅延を入れてからマーカーの状態を確認
+    setTimeout(() => {
+      console.log("🎯 マーカークリア後の状態確認:", {
+        searchResultMarkersLength: searchResultMarkers.length,
+        searchResultsLength: searchResults.length,
+      });
+    }, 100);
+
     // 検索クエリをクリア
     setQuery("");
   };
@@ -956,6 +1048,19 @@ export default function Page() {
 
     // 沿線スポットのマーカーをクリア
     clearAlongMarkers();
+
+    // 検索結果の数字マーカーをクリア
+    console.log("🔍 検索開始前のマーカークリア処理");
+    clearSearchResultMarkers();
+    setSearchResults([]);
+
+    // 少し遅延を入れてからマーカーの状態を確認
+    setTimeout(() => {
+      console.log("🔍 マーカークリア後の状態確認:", {
+        searchResultMarkersLength: searchResultMarkers.length,
+        searchResultsLength: searchResults.length,
+      });
+    }, 100);
 
     setError(null);
     setLoadingRoutes(true);
@@ -1100,6 +1205,19 @@ export default function Page() {
       setError("まず目的地を検索・選択してください。");
       return;
     }
+
+    // ルート取得時に検索結果の数字マーカーをクリア
+    console.log("🚗 ルート取得時のマーカークリア処理");
+    clearSearchResultMarkers();
+    setSearchResults([]);
+
+    // 少し遅延を入れてからマーカーの状態を確認
+    setTimeout(() => {
+      console.log("🚗 マーカークリア後の状態確認:", {
+        searchResultMarkersLength: searchResultMarkers.length,
+        searchResultsLength: searchResults.length,
+      });
+    }, 100);
 
     // 出発地の決定（優先順位：現在地マーカー > 地図中心）
     let originPos: google.maps.LatLng;
@@ -1689,6 +1807,11 @@ export default function Page() {
 
   const addWaypoint = (s: AlongSpot) => {
     setWaypoints((prev) => [...prev, { lat: s.lat, lng: s.lng, name: s.name }]);
+
+    // 経由地追加後に吹き出しを閉じる
+    if (infoRef.current) {
+      infoRef.current.close();
+    }
   };
 
   const removeWaypoint = (index: number) => {
@@ -1831,75 +1954,145 @@ export default function Page() {
                     lng: result.location.longitude,
                   };
 
-                  // 情報ウィンドウを表示（ピンを押したときと同じ動き）
+                  // 対応するマーカーを見つけて、そのマーカーの位置にInfoWindowを表示
                   if (infoRef.current && mapRef.current) {
-                    const content = `
-                      <div style="min-width: 300px; max-width: 350px; padding: 15px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
-                        <div style="margin-bottom: 12px;">
-                          <div style="font-weight: 700; color: #1a1a1a; font-size: 16px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
-                            📍 ${result.name}
+                    // 検索結果マーカーの中から、この結果に対応するマーカーを見つける
+                    const targetMarker = searchResultMarkers[index];
+
+                    if (targetMarker) {
+                      const content = `
+                        <div style="min-width: 250px; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                          <div style="margin-bottom: 16px;">
+                            <div style="font-weight: 600; color: #333; font-size: 16px; margin-bottom: 6px;">
+                              ${result.name}
+                            </div>
                           </div>
+                          <button 
+                            id="set-destination-btn"
+                            style="
+                              width: 100%;
+                              padding: 10px 16px;
+                              background: #38BDF8;
+                              color: white;
+                              border: none;
+                              border-radius: 8px;
+                              font-weight: 500;
+                              font-size: 14px;
+                              cursor: pointer;
+                              transition: background 0.2s;
+                            "
+                            onmouseover="this.style.background='#0EA5E9'"
+                            onmouseout="this.style.background='#38BDF8'"
+                          >
+                            目的地に設定
+                          </button>
                         </div>
-                        <button 
-                          id="set-destination-btn"
-                          style="
-                            width: 100%;
-                            padding: 8px 16px;
-                            background: #38BDF8;
-                            color: white;
-                            border: none;
-                            border-radius: 8px;
-                            font-weight: 600;
-                            font-size: 13px;
-                            cursor: pointer;
-                            transition: background 0.2s;
-                            white-space: nowrap;
-                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-                          "
-                          onmouseover="this.style.background='#0EA5E9'"
-                          onmouseout="this.style.background='#38BDF8'"
-                        >
-                          🎯 目的地に設定
-                        </button>
-                      </div>
-                    `;
+                      `;
 
-                    infoRef.current.setContent(content);
-                    infoRef.current.open(mapRef.current, null);
+                      infoRef.current.setContent(content);
+                      infoRef.current.open(mapRef.current, targetMarker);
 
-                    // 目的地に設定ボタンのクリックイベントを設定
-                    setTimeout(() => {
-                      const setDestinationBtn = document.getElementById(
-                        "set-destination-btn"
-                      );
-                      if (setDestinationBtn) {
-                        setDestinationBtn.addEventListener("click", () => {
-                          // 目的地を設定
-                          handlePlaceSelection(
-                            result.name,
-                            coords,
-                            result.address
-                          );
-
-                          // 現在地から出発してルートを表示
-                          if (currentLocation) {
-                            setCenter(currentLocation);
-                            createOriginMarker(currentLocation);
-                            // 検索結果のマーカーをクリア
-                            clearSearchResultMarkers();
-                            setSearchResults([]);
-                            // ルートを取得
-                            fetchRoutes();
-                          } else {
-                            setError(
-                              "現在地が取得できません。現在地の取得をお待ちください。"
+                      // 目的地に設定ボタンのクリックイベントを設定
+                      setTimeout(() => {
+                        const setDestinationBtn = document.getElementById(
+                          "set-destination-btn"
+                        );
+                        if (setDestinationBtn) {
+                          setDestinationBtn.addEventListener("click", () => {
+                            // 目的地を設定
+                            handlePlaceSelection(
+                              result.name,
+                              coords,
+                              result.address
                             );
-                          }
-                          // 情報ウィンドウを閉じる
-                          infoRef.current?.close();
-                        });
-                      }
-                    }, 100);
+
+                            // 現在地から出発してルートを表示
+                            if (currentLocation) {
+                              setCenter(currentLocation);
+                              createOriginMarker(currentLocation);
+                              // 検索結果のマーカーをクリア
+                              clearSearchResultMarkers();
+                              setSearchResults([]);
+                              // ルートを取得
+                              fetchRoutes();
+                            } else {
+                              setError(
+                                "現在地が取得できません。現在地の取得をお待ちください。"
+                              );
+                            }
+                            // 情報ウィンドウを閉じる
+                            infoRef.current?.close();
+                          });
+                        }
+                      }, 100);
+                    } else {
+                      // マーカーが見つからない場合は地図の中心に表示
+                      const content = `
+                        <div style="min-width: 250px; padding: 16px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                          <div style="margin-bottom: 16px;">
+                            <div style="font-weight: 600; color: #333; font-size: 16px; margin-bottom: 6px;">
+                              ${result.name}
+                            </div>
+                          </div>
+                          <button 
+                            id="set-destination-btn"
+                            style="
+                              width: 100%;
+                              padding: 10px 16px;
+                              background: #38BDF8;
+                              color: white;
+                              border: none;
+                              border-radius: 8px;
+                              font-weight: 500;
+                              font-size: 14px;
+                              cursor: pointer;
+                              transition: background 0.2s;
+                            "
+                            onmouseover="this.style.background='#0EA5E9'"
+                            onmouseout="this.style.background='#38BDF8'"
+                          >
+                            目的地に設定
+                          </button>
+                        </div>
+                      `;
+
+                      infoRef.current.setContent(content);
+                      infoRef.current.open(mapRef.current, null);
+
+                      // 目的地に設定ボタンのクリックイベントを設定
+                      setTimeout(() => {
+                        const setDestinationBtn = document.getElementById(
+                          "set-destination-btn"
+                        );
+                        if (setDestinationBtn) {
+                          setDestinationBtn.addEventListener("click", () => {
+                            // 目的地を設定
+                            handlePlaceSelection(
+                              result.name,
+                              coords,
+                              result.address
+                            );
+
+                            // 現在地から出発してルートを表示
+                            if (currentLocation) {
+                              setCenter(currentLocation);
+                              createOriginMarker(currentLocation);
+                              // 検索結果のマーカーをクリア
+                              clearSearchResultMarkers();
+                              setSearchResults([]);
+                              // ルートを取得
+                              fetchRoutes();
+                            } else {
+                              setError(
+                                "現在地が取得できません。現在地の取得をお待ちください。"
+                              );
+                            }
+                            // 情報ウィンドウを閉じる
+                            infoRef.current?.close();
+                          });
+                        }
+                      }, 100);
+                    }
                   }
                 }}
               >
@@ -2084,7 +2277,7 @@ export default function Page() {
         {/* ルート表示カード */}
         {routes.length > 0 && (
           <div className="max-w-md mx-auto px-4 mb-4">
-            <div className="flex justify-center">
+            <div className="flex flex-col items-center gap-3">
               {(() => {
                 const ecoRoute = routes.find((r) => r.type === "eco");
                 const displayRoutes = [];
@@ -2094,20 +2287,47 @@ export default function Page() {
                 return displayRoutes.map((r) => (
                   <div
                     key={r.type}
-                    className="w-64 p-0 rounded-xl shadow-card border-2 border-pink-100 bg-pink-50 text-center"
+                    className="flex flex-col items-center gap-3"
                   >
-                    <div className="text-sm text-gray-600 mb-1">所要時間</div>
-                    <div className="text-xl font-bold text-gray-900">
-                      {toMinLabel(r.duration_min)}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {r.distance_km.toFixed(1)} km
-                    </div>
-                    {r.advisory?.fuel_consumption_ml != null && (
-                      <div className="text-xs text-gray-500 mt-1">
-                        燃料: {Math.round(r.advisory.fuel_consumption_ml)} ml
+                    {/* 所要時間カード（メイン） */}
+                    <div className="w-64 p-3 rounded-xl shadow-card border-2 border-pink-100 bg-pink-50">
+                      <div className="text-2xl font-bold text-gray-900 text-center">
+                        {toMinLabel(r.duration_min)}
                       </div>
-                    )}
+                      <div className="text-sm text-gray-600 text-center mt-1">
+                        {r.distance_km.toFixed(1)} km
+                      </div>
+                      {r.advisory?.fuel_consumption_ml != null && (
+                        <div className="text-xs text-gray-500 text-center mt-1">
+                          燃料: {Math.round(r.advisory.fuel_consumption_ml)} ml
+                        </div>
+                      )}
+                    </div>
+
+                    {/* プレイリスト提案と出発ボタン */}
+                    <div className="flex gap-3">
+                      {/* プレイリスト提案ボタン */}
+                      <button
+                        onClick={proposePlaylist}
+                        disabled={loadingPlaylist}
+                        className="px-4 py-3 bg-cyan-100 hover:bg-cyan-200 disabled:bg-cyan-50 text-gray-800 rounded-xl font-medium transition-colors flex flex-col items-center justify-center gap-1 min-w-[80px]"
+                        title="プレイリスト提案を表示"
+                      >
+                        <TbMusic size={20} />
+                        <span className="text-xs">プレイリスト提案</span>
+                      </button>
+
+                      {/* 出発ボタン */}
+                      <button
+                        onClick={() => setShowRewardPopup(true)}
+                        disabled={!routes.length}
+                        className="px-6 py-4 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors flex flex-col items-center justify-center gap-1 min-w-[100px]"
+                        title="出発する"
+                      >
+                        <TbNavigation size={24} />
+                        <span className="text-sm">出発する</span>
+                      </button>
+                    </div>
                   </div>
                 ));
               })()}
@@ -2115,80 +2335,17 @@ export default function Page() {
           </div>
         )}
 
-        {/* アクションボタン */}
-        {routes.length > 0 && (
+        {/* プレイリスト読み込み中の表示 */}
+        {routes.length > 0 && loadingPlaylist && (
           <div className="max-w-md mx-auto px-4 mb-4">
-            {loadingPlaylist ? (
-              <div className="flex justify-center">
-                <div className="px-6 py-4 bg-purple-100 text-purple-800 rounded-lg border border-purple-200">
-                  <span className="flex items-center gap-2 text-lg font-medium">
-                    <span className="text-2xl">♬</span>
-                    プレイリストを構築中...
-                  </span>
-                </div>
+            <div className="flex justify-center">
+              <div className="px-6 py-4 bg-purple-100 text-purple-800 rounded-lg border border-purple-200">
+                <span className="flex items-center gap-2 text-lg font-medium">
+                  <span className="text-2xl">♬</span>
+                  プレイリストを構築中...
+                </span>
               </div>
-            ) : (
-              <>
-                {/* セカンダリ：チップ2つ */}
-                <div className="flex gap-2 justify-center">
-                  {/* 寄り道候補ボタン（一時的に非表示 - 自動表示のため） */}
-                  {false && (
-                    <button
-                      onClick={() => fetchAlongSpots()}
-                      disabled={!routes.length}
-                      aria-label="寄り道候補を表示"
-                      className="px-3 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-sm shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                    >
-                      <TbMapPin size={16} />
-                      <span>寄り道候補</span>
-                      {/* 件数が取れるなら小バッジ */}
-                      {alongSpots?.length > 0 && (
-                        <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
-                          {alongSpots.length}
-                        </span>
-                      )}
-                    </button>
-                  )}
-
-                  <button
-                    onClick={proposePlaylist}
-                    disabled={!routes.length}
-                    aria-label="BGM提案を表示"
-                    className="px-3 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-sm shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                  >
-                    <TbMusic size={16} />
-                    <span>BGM提案</span>
-                    {playlist?.length > 0 && (
-                      <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
-                        {playlist.length}
-                      </span>
-                    )}
-                  </button>
-                </div>
-
-                {/* 読み込み中の表示 */}
-                {loadingAlong && (
-                  <div className="text-center mt-2">
-                    <div className="text-xs text-gray-500">
-                      おすすめスポット取得中...
-                    </div>
-                  </div>
-                )}
-
-                {/* プライマリ：全幅の主CTA */}
-                <button
-                  onClick={() => setShowRewardPopup(true)}
-                  disabled={!routes.length}
-                  aria-label="出発する"
-                  className="w-full mt-3 py-3 rounded-xl text-white font-semibold shadow-md bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-400 active:translate-y-[1px] transition"
-                >
-                  <div className="flex items-center justify-center gap-2">
-                    <TbNavigation size={18} />
-                    <span>出発する</span>
-                  </div>
-                </button>
-              </>
-            )}
+            </div>
           </div>
         )}
 

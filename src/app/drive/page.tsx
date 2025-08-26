@@ -982,75 +982,96 @@ export default function Page() {
 
         // 地図の表示範囲を調整（全ての候補が表示されるように）
         if (mapRef.current && data.items.length > 0) {
-          const bounds = new google.maps.LatLngBounds();
-
-          data.items.forEach((item: SearchResult) => {
-            bounds.extend({
-              lat: item.location.latitude,
-              lng: item.location.longitude,
+          // 検索結果の件数に応じて地図の中心位置を決定
+          if (data.items.length === 1) {
+            // 1件の場合は、その場所に地図の中心を設定
+            const singleItem = data.items[0];
+            mapRef.current.setCenter({
+              lat: singleItem.location.latitude,
+              lng: singleItem.location.longitude,
             });
-          });
+            mapRef.current.setZoom(15); // 1件の場合は適度にズーム
+          } else {
+            // 2件以上の場合は、座標の中心（平均）に地図の中心を設定
+            const bounds = new google.maps.LatLngBounds();
 
-          // 現在地も含める
-          if (currentLocation) {
-            bounds.extend(currentLocation);
-          }
+            data.items.forEach((item: SearchResult) => {
+              bounds.extend({
+                lat: item.location.latitude,
+                lng: item.location.longitude,
+              });
+            });
 
-          // ピンの散らばり具合を計算
-          const points = [
-            ...data.items.map((item: SearchResult) => ({
+            // 検索結果の座標の中心を計算
+            const centerLat =
+              data.items.reduce(
+                (sum: number, item: SearchResult) =>
+                  sum + item.location.latitude,
+                0
+              ) / data.items.length;
+            const centerLng =
+              data.items.reduce(
+                (sum: number, item: SearchResult) =>
+                  sum + item.location.longitude,
+                0
+              ) / data.items.length;
+
+            // 地図の中心を検索結果の中心に設定
+            mapRef.current.setCenter({ lat: centerLat, lng: centerLng });
+
+            // ピンの散らばり具合を計算（検索結果のみ）
+            const points = data.items.map((item: SearchResult) => ({
               lat: item.location.latitude,
               lng: item.location.longitude,
-            })),
-            ...(currentLocation ? [currentLocation] : []),
-          ];
+            }));
 
-          let maxDistance = 0;
-          for (let i = 0; i < points.length; i++) {
-            for (let j = i + 1; j < points.length; j++) {
-              const distance =
-                google.maps.geometry.spherical.computeDistanceBetween(
-                  new google.maps.LatLng(points[i].lat, points[i].lng),
-                  new google.maps.LatLng(points[j].lat, points[j].lng)
-                );
-              maxDistance = Math.max(maxDistance, distance);
+            let maxDistance = 0;
+            for (let i = 0; i < points.length; i++) {
+              for (let j = i + 1; j < points.length; j++) {
+                const distance =
+                  google.maps.geometry.spherical.computeDistanceBetween(
+                    new google.maps.LatLng(points[i].lat, points[i].lng),
+                    new google.maps.LatLng(points[j].lat, points[j].lng)
+                  );
+                maxDistance = Math.max(maxDistance, distance);
+              }
             }
-          }
 
-          // 距離に基づいて適切なズームレベルを決定
-          let targetZoom = 15; // デフォルト
-          if (maxDistance > 50000) {
-            // 50km以上
-            targetZoom = 9; // 1つ広域
-          } else if (maxDistance > 20000) {
-            // 20km以上
-            targetZoom = 10; // 1つ広域
-          } else if (maxDistance > 10000) {
-            // 10km以上
-            targetZoom = 11; // 1つ広域
-          } else if (maxDistance > 5000) {
-            // 5km以上
-            targetZoom = 12; // 1つ広域
-          } else if (maxDistance > 2000) {
-            // 2km以上
-            targetZoom = 13; // 1つ広域
-          } else if (maxDistance > 1000) {
-            // 1km以上
-            targetZoom = 14; // 1つ広域
-          } else {
-            // 1km未満
-            targetZoom = 15; // 1つ広域
-          }
-
-          // 地図の表示範囲を設定
-          mapRef.current.fitBounds(bounds);
-
-          // 計算したズームレベルを適用
-          setTimeout(() => {
-            if (mapRef.current) {
-              mapRef.current.setZoom(targetZoom);
+            // 距離に基づいて適切なズームレベルを決定
+            let targetZoom = 15; // デフォルト
+            if (maxDistance > 50000) {
+              // 50km以上
+              targetZoom = 9; // 1つ広域
+            } else if (maxDistance > 20000) {
+              // 20km以上
+              targetZoom = 10; // 1つ広域
+            } else if (maxDistance > 10000) {
+              // 10km以上
+              targetZoom = 11; // 1つ広域
+            } else if (maxDistance > 5000) {
+              // 5km以上
+              targetZoom = 12; // 1つ広域
+            } else if (maxDistance > 2000) {
+              // 2km以上
+              targetZoom = 13; // 1つ広域
+            } else if (maxDistance > 1000) {
+              // 1km以上
+              targetZoom = 14; // 1つ広域
+            } else {
+              // 1km未満
+              targetZoom = 15; // 1つ広域
             }
-          }, 100);
+
+            // 地図の表示範囲を設定
+            mapRef.current.fitBounds(bounds);
+
+            // 計算したズームレベルを適用
+            setTimeout(() => {
+              if (mapRef.current) {
+                mapRef.current.setZoom(targetZoom);
+              }
+            }, 100);
+          }
         }
 
         setError(null);
@@ -1803,21 +1824,185 @@ export default function Page() {
             {searchResults.map((result, index) => (
               <div
                 key={result.place_id}
-                className="flex items-center gap-2 p-2 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
+                className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg border border-gray-200 hover:bg-gray-100 transition-colors cursor-pointer"
                 onClick={() => {
                   const coords = {
                     lat: result.location.latitude,
                     lng: result.location.longitude,
                   };
+
+                  // 目的地を設定
                   handlePlaceSelection(result.name, coords, result.address);
+
+                  // 情報ウィンドウを表示
+                  if (infoRef.current && mapRef.current) {
+                    // 現在地からの距離を計算
+                    let distanceText = "";
+                    if (currentLocation) {
+                      const distance =
+                        google.maps.geometry.spherical.computeDistanceBetween(
+                          new google.maps.LatLng(
+                            currentLocation.lat,
+                            currentLocation.lng
+                          ),
+                          new google.maps.LatLng(coords.lat, coords.lng)
+                        );
+                      if (distance > 1000) {
+                        distanceText = `距離: ${(distance / 1000).toFixed(
+                          1
+                        )}km`;
+                      } else {
+                        distanceText = `距離: ${Math.round(distance)}m`;
+                      }
+                    }
+
+                    const content = `
+                      <div style="min-width: 300px; max-width: 350px; padding: 15px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                        <div style="margin-bottom: 12px;">
+                          <div style="font-weight: 700; color: #1a1a1a; font-size: 16px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
+                            📍 ${result.name}
+                          </div>
+                          ${
+                            result.address
+                              ? `<div style="color: #555; font-size: 12px; line-height: 1.4; margin-bottom: 6px; padding: 4px 8px; background: #f8f9fa; border-radius: 4px;">
+                                 🏠 ${result.address}
+                               </div>`
+                              : ""
+                          }
+                          <div style="color: #666; font-size: 11px; margin-bottom: 6px; padding: 4px 8px; background: #f1f3f4; border-radius: 4px;">
+                            📊 座標: ${coords.lat.toFixed(
+                              6
+                            )}, ${coords.lng.toFixed(6)}
+                          </div>
+                          ${
+                            distanceText
+                              ? `<div style="color: #0066cc; font-size: 11px; margin-bottom: 6px; padding: 4px 8px; background: #e3f2fd; border-radius: 4px; font-weight: 500;">
+                                 🚗 ${distanceText}
+                               </div>`
+                              : ""
+                          }
+                        </div>
+                        <button 
+                          id="set-destination-btn"
+                          style="
+                            width: 100%;
+                            padding: 8px 16px;
+                            background: #38BDF8;
+                            color: white;
+                            border: none;
+                            border-radius: 8px;
+                            font-weight: 600;
+                            font-size: 13px;
+                            cursor: pointer;
+                            transition: background 0.2s;
+                            white-space: nowrap;
+                            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+                          "
+                          onmouseover="this.style.background='#0EA5E9'"
+                          onmouseout="this.style.background='#38BDF8'"
+                        >
+                          🎯 目的地に設定
+                        </button>
+                      </div>
+                    `;
+
+                    infoRef.current.setContent(content);
+                    infoRef.current.open(mapRef.current, null);
+
+                    // 目的地に設定ボタンのクリックイベントを設定
+                    setTimeout(() => {
+                      const setDestinationBtn = document.getElementById(
+                        "set-destination-btn"
+                      );
+                      if (setDestinationBtn) {
+                        setDestinationBtn.addEventListener("click", () => {
+                          // 現在地から出発してルートを表示
+                          if (currentLocation) {
+                            setCenter(currentLocation);
+                            createOriginMarker(currentLocation);
+                            // 検索結果のマーカーをクリア
+                            clearSearchResultMarkers();
+                            setSearchResults([]);
+                            // ルートを取得
+                            fetchRoutes();
+                          } else {
+                            setError(
+                              "現在地が取得できません。現在地の取得をお待ちください。"
+                            );
+                          }
+                          // 情報ウィンドウを閉じる
+                          infoRef.current?.close();
+                        });
+                      }
+                    }, 100);
+                  }
                 }}
               >
-                <div className="w-5 h-5 bg-orange-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
+                <div className="w-6 h-6 bg-orange-500 text-white rounded-full flex items-center justify-center text-xs font-bold">
                   {index + 1}
                 </div>
-                <div className="font-medium text-gray-900 text-sm">
-                  {result.name}
+                <div className="flex-1 min-w-0">
+                  <div className="font-medium text-gray-900 text-sm mb-1">
+                    {result.name}
+                  </div>
+                  {result.address && (
+                    <div className="text-xs text-gray-600 truncate">
+                      {result.address}
+                    </div>
+                  )}
                 </div>
+                <button
+                  onClick={(e) => {
+                    e.stopPropagation(); // カードのクリックイベントが発火しないようにする
+                    const coords = {
+                      lat: result.location.latitude,
+                      lng: result.location.longitude,
+                    };
+
+                    // 目的地を設定
+                    handlePlaceSelection(result.name, coords, result.address);
+
+                    // 現在地が取得できている場合は、ルート表示を開始
+                    if (currentLocation) {
+                      setTimeout(() => {
+                        setCenter(currentLocation);
+                        createOriginMarker(currentLocation);
+                        // 検索結果のマーカーをクリア
+                        clearSearchResultMarkers();
+                        setSearchResults([]);
+                        // ルートを取得
+                        fetchRoutes();
+                      }, 500);
+                    } else {
+                      setError(
+                        "現在地が取得できません。現在地の取得をお待ちください。"
+                      );
+                    }
+                  }}
+                  className="px-3 py-1.5 bg-blue-500 hover:bg-blue-600 text-white text-xs rounded-lg transition-colors flex items-center gap-1 flex-shrink-0"
+                  title="この場所を目的地に設定してルートを表示"
+                >
+                  <svg
+                    className="w-3 h-3"
+                    fill="none"
+                    stroke="currentColor"
+                    viewBox="0 0 24 24"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"
+                    />
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      strokeWidth={2}
+                      d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"
+                    />
+                  </svg>
+                  目的地に設定
+                </button>
               </div>
             ))}
           </div>
@@ -1932,6 +2117,74 @@ export default function Page() {
             </div>
           </div>
         </div>
+
+        {/* 沿線スポットリスト */}
+        {alongSpots.length > 0 && (
+          <div className="max-w-md mx-auto px-4 mb-4">
+            <h3 className="font-semibold text-gray-900 mb-3">
+              おすすめ推しスポット ({alongSpots.length}件)
+              {false && (
+                <span className="text-sm font-normal text-gray-500 ml-2">
+                  - {false ? "進行度順" : false ? "均等分布" : "バランス重視"}
+                </span>
+              )}
+            </h3>
+            <div className="space-y-2">
+              {alongSpotsWithOshis.map((s, index) => (
+                <div
+                  key={s.id}
+                  className={`flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-200 transition-all ${
+                    isWaypointAdded(s) ? "opacity-50 grayscale" : ""
+                  }`}
+                >
+                  {/* サムネイル */}
+                  <div className="flex-shrink-0">
+                    {s.is_special === true ? (
+                      <img
+                        src="/HondaLogo.svg"
+                        alt="Honda"
+                        className="w-8 h-8"
+                      />
+                    ) : (
+                      <img
+                        src="/star_logo.svg"
+                        alt="Star"
+                        className="w-8 h-8"
+                      />
+                    )}
+                  </div>
+
+                  {/* 場所名と推し名 */}
+                  <div className="flex-1 min-w-0">
+                    <div className="font-medium text-gray-900 mb-1">
+                      {s.name}
+                    </div>
+                    <div className="text-sm text-gray-600">
+                      {s.oshiNames && s.oshiNames.length > 0 ? (
+                        <span>{s.oshiNames.join(", ")}</span>
+                      ) : (
+                        <span>推し情報がありません</span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* 経由地に追加ボタン */}
+                  <button
+                    onClick={() => addWaypoint(s)}
+                    disabled={isWaypointAdded(s)}
+                    className={`px-3 py-1 text-white rounded-lg text-xs flex-shrink-0 transition-colors ${
+                      isWaypointAdded(s)
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-blue-500 hover:bg-blue-600"
+                    }`}
+                  >
+                    {isWaypointAdded(s) ? "追加済み" : "経由地に追加"}
+                  </button>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
 
         {/* ルート選択カード */}
         {/* ルート表示カード */}

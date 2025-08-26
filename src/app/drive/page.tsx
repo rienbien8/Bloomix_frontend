@@ -2287,25 +2287,15 @@ export default function Page() {
                 return displayRoutes.map((r) => (
                   <div
                     key={r.type}
-                    className="flex flex-col items-center gap-3"
+                    className="w-full flex flex-col items-center gap-3"
                   >
-                    {/* 所要時間カード（メイン） */}
-                    <div className="w-64 p-3 rounded-xl shadow-card border-2 border-pink-100 bg-pink-50">
-                      <div className="text-2xl font-bold text-gray-900 text-center">
-                        {toMinLabel(r.duration_min)}
+                    {/* 所要時間と距離の表示 */}
+                    <div className="w-full flex items-center justify-between">
+                      <div className="text-lg font-semibold text-gray-900">
+                        {toMinLabel(r.duration_min)}（{r.distance_km.toFixed(1)}
+                        km）
                       </div>
-                      <div className="text-sm text-gray-600 text-center mt-1">
-                        {r.distance_km.toFixed(1)} km
-                      </div>
-                      {r.advisory?.fuel_consumption_ml != null && (
-                        <div className="text-xs text-gray-500 text-center mt-1">
-                          燃料: {Math.round(r.advisory.fuel_consumption_ml)} ml
-                        </div>
-                      )}
-                    </div>
 
-                    {/* プレイリスト提案と出発ボタン */}
-                    <div className="flex gap-3">
                       {/* プレイリスト提案ボタン */}
                       <button
                         onClick={proposePlaylist}
@@ -2316,18 +2306,18 @@ export default function Page() {
                         <TbMusic size={20} />
                         <span className="text-xs">プレイリスト提案</span>
                       </button>
-
-                      {/* 出発ボタン */}
-                      <button
-                        onClick={() => setShowRewardPopup(true)}
-                        disabled={!routes.length}
-                        className="px-6 py-4 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors flex flex-col items-center justify-center gap-1 min-w-[100px]"
-                        title="出発する"
-                      >
-                        <TbNavigation size={24} />
-                        <span className="text-sm">出発する</span>
-                      </button>
                     </div>
+
+                    {/* 出発ボタン（画面いっぱい） */}
+                    <button
+                      onClick={() => setShowRewardPopup(true)}
+                      disabled={!routes.length}
+                      className="w-full py-4 bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed text-white rounded-xl font-medium transition-colors flex items-center justify-center gap-2"
+                      title="出発する"
+                    >
+                      <TbNavigation size={24} />
+                      <span className="text-lg font-semibold">出発する</span>
+                    </button>
                   </div>
                 ));
               })()}
@@ -2442,7 +2432,7 @@ export default function Page() {
 
         {/* プレイリスト */}
         {playlist.length > 0 && (
-          <div className="max-w-md mx-auto px-4 mb-4">
+          <div className="max-w-2xl mx-auto px-4 mb-4">
             <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
               <span className="text-2xl">🎵</span>
               <span className="text-black-600">おすすめプレイリスト</span>

@@ -53,38 +53,11 @@ export default function Home() {
         // 1. ユーザーの推し情報を取得（一度だけ）
         const oshiIds = await fetchUserOshis();
 
-        // 2. スポット情報を取得（初期表示時のみ、推し情報は含めない）
-        try {
-          // フォロー推しフィルタリングを一時的に無効化（全スポット表示）
-          const defaultBbox = "35.65,139.69,35.67,139.72"; // 渋谷周辺
-          console.log("🏠 初期化時のBBox:", defaultBbox);
-          const spotsResponse = await Api.spots(defaultBbox, {
-            user_id: 1, // テスト用ユーザーID
-            followed_only: 1, // フォロー推しのみ
-            limit: 20,
-          });
-          if (spotsResponse?.items) {
-            console.log(
-              "✅ フォロー推しスポット取得成功:",
-              spotsResponse.items.length,
-              "件"
-            );
-            console.log(
-              "🏠 初期化時のスポット:",
-              spotsResponse.items.map((s) => ({ id: s.id, name: s.name }))
-            );
-            setSpots(spotsResponse.items);
-          } else {
-            console.warn("⚠️ フォロー推しスポット取得失敗、モックデータを使用");
-            setSpots(mockSpots);
-          }
-        } catch (error) {
-          console.warn(
-            "⚠️ フォロー推しスポット取得失敗、モックデータを使用:",
-            error
-          );
-          setSpots(mockSpots);
-        }
+        // 2. スポット情報はMapEmbedから取得するため、初期化時は取得しない
+        // MapEmbedのonSpotsUpdateコールバックでスポットが更新される
+        console.log(
+          "🏠 スポット情報はMapEmbedから取得するため、初期化時はスキップ"
+        );
 
         // 3. フォローしているアーティストのコンテンツを取得（必要な場合のみ）
         if (oshiIds.length > 0) {
@@ -126,50 +99,19 @@ export default function Home() {
     initializeData();
   }, []);
 
-  // 地図の中心位置が変更された時にスポットを再取得（初期表示時と検索時のみ）
+  // 地図の中心位置が変更された時の処理
   const handleMapCenterChange = useCallback(
     (
       center: { lat: number; lng: number },
       reason: "initial" | "search" | "move"
     ) => {
       setMapCenter(center);
-
-      // 初期表示時または検索時のみスポットを再取得
-      if (reason === "initial" || reason === "search") {
-        // 地図中心から半径約1kmのBBoxを作成
-        const lat = center.lat;
-        const lng = center.lng;
-        const delta = 0.01; // 約1km
-        const bbox = `${lat - delta},${lng - delta},${lat + delta},${
-          lng + delta
-        }`;
-
-        // デバウンス処理を追加（連続した呼び出しを防ぐ）
-        const timeoutId = setTimeout(() => {
-          Api.spots(bbox, {
-            user_id: 1, // テスト用ユーザーID
-            followed_only: 1, // フォロー推しのみ
-            limit: 20,
-          })
-            .then((response) => {
-              if (response?.items) {
-                console.log(
-                  "🗺️ 地図中心変更によるフォロー推しスポット更新:",
-                  response.items.length,
-                  "件"
-                );
-                setSpots(response.items);
-              }
-            })
-            .catch((error) => {
-              console.warn("フォロー推しスポット取得に失敗:", error);
-              // エラー時は既存のスポットを維持
-            });
-        }, 500); // 500msのデバウンス
-
-        // クリーンアップ関数
-        return () => clearTimeout(timeoutId);
-      }
+      // MapEmbedが自動的にスポットを再取得するため、ここでは何もしない
+      console.log(
+        "🗺️ 地図中心変更:",
+        reason,
+        "MapEmbedが自動的にスポットを再取得します"
+      );
     },
     []
   );
@@ -190,7 +132,7 @@ export default function Home() {
       console.log("🗺️ 現在のspots state:", spots?.length, "件");
       setSpots(updatedSpots);
     },
-    [spots]
+    [] // spotsを依存配列から削除
   );
 
   return (

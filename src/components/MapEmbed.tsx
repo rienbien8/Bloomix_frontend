@@ -140,13 +140,26 @@ export default function MapEmbed({
   }, [mapsReady, specialOnly]);
 
   async function loadSpots() {
+    console.log("🗺️ MapEmbed: loadSpots関数が呼び出されました");
     try {
-      if (!mapRef.current) return;
+      if (!mapRef.current) {
+        console.log("🗺️ MapEmbed: mapRef.currentがnullのため終了");
+        return;
+      }
       const bbox = mapToBBox(mapRef.current);
-      if (!bbox) return;
+      if (!bbox) {
+        console.log("🗺️ MapEmbed: bboxが取得できないため終了");
+        return;
+      }
       const c = mapRef.current.getCenter();
       const origin = c ? `${c.lat()},${c.lng()}` : undefined;
       setStatus("周辺スポット取得中…");
+      console.log("🗺️ MapEmbed: API呼び出し開始", {
+        bbox,
+        origin,
+        followed_only,
+        user_id,
+      });
 
       const data = await apiGet<{ count: number; items: any[] }>(
         "/api/v1/spots",
@@ -160,23 +173,15 @@ export default function MapEmbed({
         }
       );
 
-      // デバッグ: APIレスポンスを確認
-      console.log("MapEmbed APIレスポンス:", data);
-      console.log(
-        "Homeスポットデータ:",
-        data.items.map((s) => ({
-          id: s.id,
-          name: s.name,
-          is_special: s.is_special,
-          type: typeof s.is_special,
-          value: s.is_special,
-        }))
-      );
+      console.log("🗺️ MapEmbed: APIレスポンス", {
+        count: data.count,
+        itemsLength: data.items.length,
+      });
 
       // スポット更新コールバックを呼び出し
       if (onSpotsUpdate) {
         console.log(
-          "🗺️ MapEmbed: スポット更新コールバックを呼び出し",
+          "🗺️ MapEmbed: onSpotsUpdateコールバックを呼び出し",
           data.items.length,
           "件"
         );
@@ -195,24 +200,14 @@ export default function MapEmbed({
       data.items.forEach((s) => {
         // is_special=1のスポットにはHondaLogo.svgを使用
         let icon = undefined;
-        console.log(`スポット ${s.name} (ID: ${s.id}) のis_special判定:`, {
-          value: s.is_special,
-          type: typeof s.is_special,
-          isEqualToOne: s.is_special === 1,
-          isTruthy: Boolean(s.is_special),
-        });
 
         if (Boolean(s.is_special)) {
-          console.log(`✅ ${s.name} にHondaLogo.svgを設定`);
           icon = {
             url: "/HondaLogo.svg",
             scaledSize: new google.maps.Size(28, 28),
             anchor: new google.maps.Point(16, 16),
           };
         } else {
-          console.log(
-            `❌ ${s.name} はstar_logo.svg（is_special: ${s.is_special}）`
-          );
           icon = {
             url: "/star_logo.svg",
             scaledSize: new google.maps.Size(32, 32),

@@ -1,8 +1,11 @@
 import type { Spot } from "../modules/types";
+import { useRouter } from "next/navigation";
 
 type Props = { spot: Spot };
 
 export default function SpotCard({ spot }: Props) {
+  const router = useRouter();
+
   // サムネイル画像を取得（is_specialの値に応じて）
   const getThumbnailImage = () => {
     if (spot.is_special) {
@@ -13,6 +16,28 @@ export default function SpotCard({ spot }: Props) {
   };
 
   const thumbnailImage = getThumbnailImage();
+
+  // 目的地に設定ボタンのクリックハンドラー
+  const handleSetDestination = () => {
+    // drive/pageに遷移し、スポットの座標をクエリパラメータとして渡す
+    const params = new URLSearchParams({
+      lat: spot.lat.toString(),
+      lng: spot.lng.toString(),
+      name: spot.name,
+      address: spot.address || "",
+    });
+
+    const destinationUrl = `/drive?${params.toString()}`;
+    console.log("🚗 drive/pageに遷移中:", destinationUrl);
+    console.log("📍 スポット情報:", {
+      name: spot.name,
+      lat: spot.lat,
+      lng: spot.lng,
+      address: spot.address,
+    });
+
+    router.push(destinationUrl);
+  };
 
   return (
     <div className="bg-white rounded-xl shadow-card px-3 py-3 flex items-center gap-3">
@@ -42,6 +67,7 @@ export default function SpotCard({ spot }: Props) {
         style={{
           backgroundColor: spot.is_special ? "#EC4899" : "#38BDF8",
         }}
+        onClick={handleSetDestination}
       >
         目的地に設定
       </button>

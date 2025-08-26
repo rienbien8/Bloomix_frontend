@@ -19,6 +19,7 @@ import {
 import Header from "../../components/Header";
 import BottomNav from "../../components/BottomNav";
 import { LocationIcon } from "../../components/Icons";
+import RewardPopup from "../../components/RewardPopup";
 
 // =============================
 // Config
@@ -336,9 +337,9 @@ export default function Page() {
   const [selectedRoute, setSelectedRoute] = useState<"fastest" | "eco" | null>(
     null
   );
-  const [waypoints, setWaypoints] = useState<{ lat: number; lng: number }[]>(
-    []
-  );
+  const [waypoints, setWaypoints] = useState<
+    { lat: number; lng: number; name: string }[]
+  >([]);
 
   const [alongSpots, setAlongSpots] = useState<AlongSpot[]>([]);
   const [alongSpotsWithOshis, setAlongSpotsWithOshis] = useState<
@@ -352,6 +353,7 @@ export default function Page() {
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
+  const [showRewardPopup, setShowRewardPopup] = useState(false);
 
   // 後で実装予定: スポットソート方法の選択
   // const [spotSortMethod, setSpotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
@@ -422,8 +424,8 @@ export default function Page() {
     console.log("polyFastRef.current exists:", !!polyFastRef.current); // デバッグログ
     console.log("polyEcoRef.current exists:", !!polyEcoRef.current); // デバッグログ
 
-    // 各ラインが存在する場合のみ更新
-    if (polyFastRef.current) {
+    // 最速ルートは一時的に非表示（後で復活予定）
+    if (false && polyFastRef.current) {
       const isSelected = selectedRoute === "fastest";
       console.log(
         "Updating fastest route color:",
@@ -435,6 +437,8 @@ export default function Page() {
         strokeWeight: isSelected ? 6 : 4,
       });
     }
+
+    // エコルートのみを処理
     if (polyEcoRef.current) {
       const isSelected = selectedRoute === "eco";
       console.log(
@@ -442,9 +446,9 @@ export default function Page() {
         isSelected ? "selected" : "unselected"
       ); // デバッグログ
       polyEcoRef.current.setOptions({
-        strokeColor: isSelected ? "#ec4899" : "#9ca3af", // light pink or gray
-        strokeOpacity: isSelected ? 0.6 : 0.4,
-        strokeWeight: isSelected ? 5 : 3,
+        strokeColor: "#ec4899", // エコルートの色（ピンク）
+        strokeOpacity: 0.8,
+        strokeWeight: 5,
       });
     }
   };
@@ -482,6 +486,13 @@ export default function Page() {
         });
         infoRef.current = new google.maps.InfoWindow();
 
+        // 地図クリックでInfoWindowを閉じる
+        mapRef.current.addListener("click", () => {
+          if (infoRef.current) {
+            infoRef.current.close();
+          }
+        });
+
         // 地図初期化完了後に現在地を取得・マーカーを作成
         setTimeout(() => {
           if (currentLocation) {
@@ -504,10 +515,97 @@ export default function Page() {
     };
   }, []);
 
+  // URLクエリパラメータからスポット情報を取得して目的地を設定
+  useEffect(() => {
+    // 地図の初期化が完了するまで待機
+    const checkMapAndProcessQuery = () => {
+      if (!mapRef.current) {
+        // 地図がまだ初期化されていない場合は少し待ってから再試行
+        setTimeout(checkMapAndProcessQuery, 100);
+        return;
+      }
+
+      console.log("🗺️ 地図初期化完了、クエリパラメータをチェック中...");
+
+      // URLSearchParamsを使用してクエリパラメータを取得
+      const urlParams = new URLSearchParams(window.location.search);
+      const lat = urlParams.get("lat");
+      const lng = urlParams.get("lng");
+      const name = urlParams.get("name");
+      const address = urlParams.get("address");
+
+      console.log("🔍 クエリパラメータ:", { lat, lng, name, address });
+
+      if (lat && lng && name) {
+        const coords = {
+          lat: parseFloat(lat),
+          lng: parseFloat(lng),
+        };
+
+        console.log("🎯 目的地を設定中:", { name, coords, address });
+
+        // 目的地を設定
+        handlePlaceSelection(name, coords, address || undefined, true);
+
+        // クエリパラメータをクリア（ブラウザの履歴に残らないように）
+        const newUrl = window.location.pathname;
+        window.history.replaceState({}, "", newUrl);
+
+        console.log("✅ 目的地設定完了");
+      } else {
+        console.log("ℹ️ クエリパラメータなし");
+      }
+    };
+
+    // 地図の初期化完了を待ってからクエリパラメータを処理
+    checkMapAndProcessQuery();
+  }, []); // 空の依存配列で、コンポーネントマウント時に1回だけ実行
+
   // ページ表示時に現在地を取得
   useEffect(() => {
     getCurrentLocation();
   }, []);
+
+  // 現在地が取得された後にクエリパラメータを再チェック
+  useEffect(() => {
+    if (!currentLocation || !mapRef.current) return;
+
+    // URLSearchParamsを使用してクエリパラメータを取得
+    const urlParams = new URLSearchParams(window.location.search);
+    const lat = urlParams.get("lat");
+    const lng = urlParams.get("lng");
+    const name = urlParams.get("name");
+    const address = urlParams.get("address");
+
+    if (lat && lng && name) {
+      console.log("🔄 現在地取得後、クエリパラメータを再処理:", {
+        lat,
+        lng,
+        name,
+      });
+
+      const coords = {
+        lat: parseFloat(lat),
+        lng: parseFloat(lng),
+      };
+
+      // 目的地を設定
+      handlePlaceSelection(name, coords, address || undefined, true);
+
+      // クエリパラメータをクリア
+      const newUrl = window.location.pathname;
+      window.history.replaceState({}, "", newUrl);
+
+      // 現在地が取得されたので、自動的にルート案内を開始
+      console.log("🚀 現在地取得完了、自動的にルート案内を開始");
+      setTimeout(() => {
+        setCenter(currentLocation);
+        createOriginMarker(currentLocation);
+        // ルートを取得
+        fetchRoutes();
+      }, 1000); // 目的地設定の処理が完了するまで少し待機
+    }
+  }, [currentLocation]);
 
   // 地図外をクリックした時に候補リストを非表示にする
   useEffect(() => {
@@ -524,6 +622,8 @@ export default function Page() {
   // -----------------------------
   // 現在地を取得
   const getCurrentLocation = async () => {
+    console.log("📍 現在地取得開始");
+
     if (!navigator.geolocation) {
       setError(
         "お使いのブラウザは位置情報をサポートしていません。東京駅を現在地として設定します。"
@@ -532,6 +632,7 @@ export default function Page() {
       const tokyoStationCoords = { lat: 35.6812362, lng: 139.7671248 };
       setCurrentLocation(tokyoStationCoords);
       setCenter(tokyoStationCoords);
+      console.log("📍 東京駅を現在地として設定:", tokyoStationCoords);
 
       // 地図が初期化済みの場合は中心を更新とマーカー作成
       if (mapRef.current) {
@@ -561,6 +662,7 @@ export default function Page() {
         lng: position.coords.longitude,
       };
 
+      console.log("📍 現在地取得成功:", coords);
       setCurrentLocation(coords);
       setCenter(coords);
 
@@ -621,16 +723,30 @@ export default function Page() {
   const handlePlaceSelection = (
     name: string,
     coords: { lat: number; lng: number },
-    address?: string // 住所パラメータを追加
+    address?: string, // 住所パラメータを追加
+    isFromQuery: boolean = false // クエリパラメータからの自動設定かどうか
   ) => {
+    console.log("🎯 handlePlaceSelection 呼び出し:", {
+      name,
+      coords,
+      address,
+      isFromQuery,
+    });
+
     setError(null);
 
     const map = mapRef.current;
-    if (!map) return;
+    if (!map) {
+      console.error("❌ 地図が初期化されていません");
+      return;
+    }
+
+    console.log("✅ 地図が利用可能、目的地マーカーを作成中...");
 
     // 目的地マーカーを作成
     if (destMarkerRef.current) {
       destMarkerRef.current.setMap(null);
+      console.log("🗑️ 既存の目的地マーカーを削除");
     }
 
     destMarkerRef.current = new google.maps.Marker({
@@ -649,18 +765,20 @@ export default function Page() {
       },
     });
 
+    console.log("📍 目的地マーカー作成完了:", { name, coords });
+
     // 目的地マーカーにクリックイベントを追加
     destMarkerRef.current.addListener("click", () => {
       if (infoRef.current) {
         const content = `
-              <div style="min-width: 250px; padding: 16px;">
-                <div style="margin-bottom: 12px;">
-                  <div style="font-weight: 600; color: #333; font-size: 16px; margin-bottom: 4px;">
+              <div style="min-width: 280px; max-width: 320px; padding: 10px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
+                <div style="margin-bottom: 8px;">
+                  <div style="font-weight: 600; color: #333; font-size: 14px; margin-bottom: 2px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                     ${name}
                   </div>
                   ${
                     address
-                      ? `<div style="color: #666; font-size: 13px; line-height: 1.4;">${address}</div>`
+                      ? `<div style="color: #666; font-size: 10px; line-height: 1.2; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 4px;">${address}</div>`
                       : ""
                   }
                 </div>
@@ -668,13 +786,13 @@ export default function Page() {
                   id="set-destination-btn"
                   style="
                     width: 100%;
-                    padding: 10px 16px;
+                    padding: 6px 12px;
                     background: #38BDF8;
                     color: white;
                     border: none;
-                    border-radius: 8px;
+                    border-radius: 6px;
                     font-weight: 500;
-                    font-size: 14px;
+                    font-size: 12px;
                     cursor: pointer;
                     transition: background 0.2s;
                     white-space: nowrap;
@@ -753,6 +871,35 @@ export default function Page() {
     } else {
       map.setZoom(13); // 現在地がない場合はデフォルト
     }
+
+    // 目的地設定の成功をユーザーに通知
+    setError(null);
+    console.log("�� 目的地設定完了:", name);
+
+    // クエリパラメータからの自動設定の場合は、自動的にルート案内を開始
+    if (isFromQuery && currentLocation) {
+      console.log(
+        "🚀 クエリパラメータからの自動設定のため、ルート案内を自動開始"
+      );
+      setTimeout(() => {
+        setCenter(currentLocation);
+        createOriginMarker(currentLocation);
+        // ルートを取得
+        fetchRoutes();
+      }, 500); // 少し遅延を入れてからルート取得を開始
+    } else if (isFromQuery && !currentLocation) {
+      console.log(
+        "⏳ 現在地がまだ取得されていません。現在地取得後にルート案内を開始します。"
+      );
+    }
+
+    // 少し遅延を入れてから地図の中心を確実に設定
+    setTimeout(() => {
+      if (mapRef.current) {
+        mapRef.current.setCenter(coords);
+        console.log("🗺️ 地図の中心を目的地に移動:", coords);
+      }
+    }, 100);
 
     // 既存のルートと関連データをクリア
     setRoutes([]);
@@ -969,6 +1116,25 @@ export default function Page() {
       const data: RoutesResponse = await res.json();
       setRoutes(data.routes || []);
 
+      // エコルートを自動選択（後で復活させる可能性があるため、コードは残す）
+      const ecoRoute = data.routes.find((r) => r.type === "eco");
+      if (ecoRoute) {
+        setSelectedRoute("eco");
+        console.log("🚗 エコルートを自動選択");
+      } else {
+        // エコルートがない場合は最速ルートを選択
+        const fastestRoute = data.routes.find((r) => r.type === "fastest");
+        if (fastestRoute) {
+          setSelectedRoute("fastest");
+          console.log("🚗 最速ルートを自動選択（エコルートなし）");
+        }
+      }
+
+      // 寄り道候補を自動取得（ルート取得完了直後）
+      console.log("🗺️ 寄り道候補を自動取得中...");
+      // data.routesを直接使用して寄り道候補を取得
+      fetchAlongSpots(data.routes || []);
+
       // ルート表示時は未選択状態にする
       let currentSelectedRoute = null;
       setSelectedRoute(null); // 未選択状態に設定
@@ -981,7 +1147,8 @@ export default function Page() {
       if (polyFastRef.current) polyFastRef.current.setMap(null as any);
       if (polyEcoRef.current) polyEcoRef.current.setMap(null as any);
 
-      if (pathFast) {
+      // 最速ルートは一時的に非表示（後で復活予定）
+      if (false && pathFast) {
         polyFastRef.current = new (google.maps as any).Polyline({
           path: geom.encoding.decodePath(pathFast),
           map,
@@ -996,19 +1163,16 @@ export default function Page() {
           setSelectedRoute("fastest");
         });
       }
+
+      // エコルートのみを表示
       if (pathEco) {
         polyEcoRef.current = new (google.maps as any).Polyline({
           path: geom.encoding.decodePath(pathEco),
           map,
-          strokeColor: "#9ca3af", // 未選択時はグレー
-          strokeOpacity: 0.4,
-          strokeWeight: 3,
-          clickable: true, // クリック可能にする
-        });
-
-        // クリックイベントリスナーを追加
-        polyEcoRef.current.addListener("click", () => {
-          setSelectedRoute("eco");
+          strokeColor: "#ec4899", // エコルートの色（ピンク）
+          strokeOpacity: 0.8,
+          strokeWeight: 5,
+          clickable: false, // クリック不可（選択ボタンがないため）
         });
       }
 
@@ -1124,12 +1288,39 @@ export default function Page() {
     alongMarkersRef.current = [];
   };
 
-  const fetchAlongSpots = async () => {
-    const sr = routes.find((r) => r.type === selectedRoute);
+  const fetchAlongSpots = async (routesToUse?: RouteData[]) => {
+    console.log(
+      "🔍 fetchAlongSpots開始 - routes:",
+      routesToUse?.length || routes.length,
+      "selectedRoute:",
+      selectedRoute
+    );
+
+    // 引数で渡されたルート配列を使用、なければ現在のroutesを使用
+    const routesArray = routesToUse || routes;
+
+    // エコルートを優先、なければ最速ルートを使用
+    let sr = routesArray.find((r) => r.type === "eco");
     if (!sr) {
+      sr = routesArray.find((r) => r.type === "fastest");
+    }
+
+    console.log(
+      "🔍 選択されたルート:",
+      sr ? { type: sr.type, duration: sr.duration_min } : "なし"
+    );
+
+    if (!sr) {
+      console.error("❌ ルートが見つかりません");
       setError("ルートを選択してください。");
       return;
     }
+
+    console.log("🗺️ 寄り道候補取得開始:", {
+      routeType: sr.type,
+      routeId: sr.type,
+    });
+
     setLoadingAlong(true);
     setError(null);
     try {
@@ -1140,10 +1331,16 @@ export default function Page() {
       url.searchParams.set("followed_only", "1");
       url.searchParams.set("limit", "30");
 
+      console.log("🌐 API呼び出し:", url.toString());
+
       const res = await fetch(url.toString());
+      console.log("🌐 APIレスポンス:", res.status, res.ok);
+
       if (!res.ok) throw new Error(`along-route ${res.status}`);
       const json = await res.json();
       const items: AlongSpot[] = Array.isArray(json) ? json : json.items ?? [];
+
+      console.log("📊 取得されたスポット数:", items.length);
 
       // デバッグ: is_specialの値を確認
       console.log(
@@ -1467,7 +1664,16 @@ export default function Page() {
   };
 
   const addWaypoint = (s: AlongSpot) => {
-    setWaypoints((prev) => [...prev, { lat: s.lat, lng: s.lng }]);
+    setWaypoints((prev) => [...prev, { lat: s.lat, lng: s.lng, name: s.name }]);
+  };
+
+  const removeWaypoint = (index: number) => {
+    setWaypoints((prev) => prev.filter((_, i) => i !== index));
+  };
+
+  // スポットが経由地に追加済みかどうかを判定
+  const isWaypointAdded = (spot: AlongSpot) => {
+    return waypoints.some((wp) => wp.lat === spot.lat && wp.lng === spot.lng);
   };
 
   // Recalculate routes whenever waypoints change (after initial)
@@ -1498,11 +1704,22 @@ export default function Page() {
   // Playlist
   // -----------------------------
   const proposePlaylist = async () => {
-    const sr = routes.find((r) => r.type === selectedRoute);
+    // エコルートを優先、なければ最速ルートを使用
+    let sr = routes.find((r) => r.type === "eco");
+    if (!sr) {
+      sr = routes.find((r) => r.type === "fastest");
+    }
+
     if (!sr) {
       setError("ルートを選択してください。");
       return;
     }
+
+    console.log("🎵 プレイリスト生成開始:", {
+      routeType: sr.type,
+      duration: sr.duration_min,
+    });
+
     setLoadingPlaylist(true);
     setError(null);
     try {
@@ -1514,7 +1731,7 @@ export default function Page() {
         preferred_langs: ["ja"],
         tolerance_min: TOLERANCE_MIN_DEFAULT,
         content_types: ["youtube"],
-        max_items: 20,
+        max_items: 100,
       };
 
       const res = await fetch(url.toString(), {
@@ -1710,34 +1927,22 @@ export default function Page() {
         </div>
 
         {/* ルート選択カード */}
+        {/* ルート表示カード */}
         {routes.length > 0 && (
           <div className="max-w-md mx-auto px-4 mb-4">
-            <div className="flex gap-3">
+            <div className="flex justify-center">
               {(() => {
-                const fastestRoute = routes.find((r) => r.type === "fastest");
                 const ecoRoute = routes.find((r) => r.type === "eco");
                 const displayRoutes = [];
 
-                if (fastestRoute) displayRoutes.push(fastestRoute);
                 if (ecoRoute) displayRoutes.push(ecoRoute);
 
                 return displayRoutes.map((r) => (
-                  <button
+                  <div
                     key={r.type}
-                    onClick={() => setSelectedRoute(r.type)}
-                    className={`flex-1 p-0 rounded-xl shadow-card border-2 transition-colors ${
-                      selectedRoute === r.type
-                        ? r.type === "fastest"
-                          ? "border-blue-500 bg-blue-50"
-                          : "border-pink-500 bg-pink-50"
-                        : "border-gray-300 bg-gray-50 opacity-60"
-                    }`}
+                    className="w-64 p-0 rounded-xl shadow-card border-2 border-pink-100 bg-pink-50 text-center"
                   >
-                    <div className="text-sm text-gray-600 mb-1">
-                      {r.type === "fastest"
-                        ? "時間を優先する"
-                        : "コンテンツを楽しむ"}
-                    </div>
+                    <div className="text-sm text-gray-600 mb-1">所要時間</div>
                     <div className="text-xl font-bold text-gray-900">
                       {toMinLabel(r.duration_min)}
                     </div>
@@ -1749,7 +1954,7 @@ export default function Page() {
                         燃料: {Math.round(r.advisory.fuel_consumption_ml)} ml
                       </div>
                     )}
-                  </button>
+                  </div>
                 ));
               })()}
             </div>
@@ -1772,25 +1977,28 @@ export default function Page() {
               <>
                 {/* セカンダリ：チップ2つ */}
                 <div className="flex gap-2 justify-center">
-                  <button
-                    onClick={fetchAlongSpots}
-                    disabled={!routes.length}
-                    aria-label="寄り道候補を表示"
-                    className="px-3 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-sm shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
-                  >
-                    <TbMapPin size={16} />
-                    <span>寄り道候補</span>
-                    {/* 件数が取れるなら小バッジ */}
-                    {alongSpots?.length > 0 && (
-                      <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
-                        {alongSpots.length}
-                      </span>
-                    )}
-                  </button>
+                  {/* 寄り道候補ボタン（一時的に非表示 - 自動表示のため） */}
+                  {false && (
+                    <button
+                      onClick={fetchAlongSpots}
+                      disabled={!routes.length}
+                      aria-label="寄り道候補を表示"
+                      className="px-3 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-sm shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
+                    >
+                      <TbMapPin size={16} />
+                      <span>寄り道候補</span>
+                      {/* 件数が取れるなら小バッジ */}
+                      {alongSpots?.length > 0 && (
+                        <span className="ml-1 px-1.5 py-0.5 text-[10px] rounded-full bg-gray-100 text-gray-600">
+                          {alongSpots.length}
+                        </span>
+                      )}
+                    </button>
+                  )}
 
                   <button
                     onClick={proposePlaylist}
-                    disabled={!selectedRouteObj}
+                    disabled={!routes.length}
                     aria-label="BGM提案を表示"
                     className="px-3 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-sm shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"
                   >
@@ -1815,8 +2023,8 @@ export default function Page() {
 
                 {/* プライマリ：全幅の主CTA */}
                 <button
-                  onClick={() => alert("後日実装予定")}
-                  disabled={!selectedRouteObj}
+                  onClick={() => setShowRewardPopup(true)}
+                  disabled={!routes.length}
                   aria-label="出発する"
                   className="w-full mt-3 py-3 rounded-xl text-white font-semibold shadow-md bg-gradient-to-r from-sky-500 to-indigo-500 hover:from-sky-600 hover:to-indigo-600 disabled:opacity-50 disabled:cursor-not-allowed focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-sky-400 active:translate-y-[1px] transition"
                 >
@@ -1835,12 +2043,19 @@ export default function Page() {
           <div className="max-w-md mx-auto px-4 mb-4">
             <div className="flex flex-wrap gap-2">
               {waypoints.map((w, i) => (
-                <span
+                <div
                   key={i}
-                  className="px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs"
+                  className="flex items-center gap-2 px-3 py-1 bg-indigo-100 text-indigo-800 rounded-full text-xs"
                 >
-                  WP{i + 1}: {w.lat.toFixed(3)},{w.lng.toFixed(3)}
-                </span>
+                  <span>経由：{w.name}</span>
+                  <button
+                    onClick={() => removeWaypoint(i)}
+                    className="ml-1 w-4 h-4 flex items-center justify-center text-indigo-600 hover:text-indigo-800 hover:bg-indigo-200 rounded-full transition-colors"
+                    aria-label="経由地を削除"
+                  >
+                    ×
+                  </button>
+                </div>
               ))}
             </div>
           </div>
@@ -1861,7 +2076,9 @@ export default function Page() {
               {alongSpotsWithOshis.map((s, index) => (
                 <div
                   key={s.id}
-                  className="flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-200"
+                  className={`flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-200 transition-all ${
+                    isWaypointAdded(s) ? "opacity-50 grayscale" : ""
+                  }`}
                 >
                   {/* サムネイル */}
                   <div className="flex-shrink-0">
@@ -1897,13 +2114,14 @@ export default function Page() {
                   {/* 経由地に追加ボタン */}
                   <button
                     onClick={() => addWaypoint(s)}
-                    className="px-3 py-1 text-white rounded-lg text-xs flex-shrink-0"
-                    style={{
-                      backgroundColor:
-                        s.is_special === true ? "#EC4899" : "#388DF8",
-                    }}
+                    disabled={isWaypointAdded(s)}
+                    className={`px-3 py-1 text-white rounded-lg text-xs flex-shrink-0 transition-colors ${
+                      isWaypointAdded(s)
+                        ? "bg-gray-400 cursor-not-allowed"
+                        : "bg-blue-500 hover:bg-blue-600"
+                    }`}
                   >
-                    経由地に追加
+                    {isWaypointAdded(s) ? "追加済み" : "経由地に追加"}
                   </button>
                 </div>
               ))}
@@ -2095,6 +2313,12 @@ export default function Page() {
           </div>
         </div>
       )}
+
+      {/* ご褒美ポップアップ */}
+      <RewardPopup
+        isOpen={showRewardPopup}
+        onClose={() => setShowRewardPopup(false)}
+      />
 
       {/* フッター */}
       <BottomNav />

@@ -16,6 +16,7 @@ import {
   TbMusic,
   TbNavigation,
 } from "react-icons/tb";
+import { CiCirclePlus } from "react-icons/ci";
 import Header from "../../components/Header";
 import BottomNav from "../../components/BottomNav";
 import { LocationIcon } from "../../components/Icons";
@@ -354,6 +355,8 @@ export default function Page() {
   const [error, setError] = useState<string | null>(null);
   const [showPlaylistModal, setShowPlaylistModal] = useState(false);
   const [showRewardPopup, setShowRewardPopup] = useState(false);
+  const [showPlaylistConfirmPopup, setShowPlaylistConfirmPopup] =
+    useState(false);
 
   // 後で実装予定: スポットソート方法の選択
   // const [spotSortMethod, setSpotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
@@ -1564,8 +1567,8 @@ export default function Page() {
                       cursor:pointer; 
                       transition:background 0.2s;
                     "
-                    onmouseover="this.style.background='#0EA5E9'"
-                    onmouseout="this.style.background='#38BDF8'"
+                    onmouseover="this.style.background='#0068b7'"
+                    onmouseout="this.style.background='#0068b7'"
                   >
                     経由地に追加
                   </button>
@@ -1703,6 +1706,10 @@ export default function Page() {
   // -----------------------------
   // Playlist
   // -----------------------------
+  const showPlaylistConfirm = () => {
+    setShowPlaylistConfirmPopup(true);
+  };
+
   const proposePlaylist = async () => {
     // エコルートを優先、なければ最速ルートを使用
     let sr = routes.find((r) => r.type === "eco");
@@ -2208,13 +2215,13 @@ export default function Page() {
                 </div>
               </div>
 
-              {/* リストを見るボタン */}
+              {/* リストを表示ボタン */}
               <button
-                onClick={() => setShowPlaylistModal(true)}
+                onClick={() => setShowPlaylistConfirmPopup(true)}
                 className="w-full py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
               >
                 <span>📋</span>
-                リストを見る
+                リストを表示
               </button>
             </div>
           </div>
@@ -2319,6 +2326,137 @@ export default function Page() {
         isOpen={showRewardPopup}
         onClose={() => setShowRewardPopup(false)}
       />
+
+      {/* プレイリスト取得確認ポップアップ */}
+      {showPlaylistConfirmPopup && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-xl max-w-md w-full max-h-[90vh] overflow-hidden">
+            {/* モーダルヘッダー */}
+            <div className="p-4 border-b border-gray-200 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-gray-900 flex items-center gap-2">
+                <span className="text-2xl">🎵</span>
+                プレイリスト提案
+              </h3>
+              <button
+                onClick={() => setShowPlaylistConfirmPopup(false)}
+                className="text-gray-400 hover:text-gray-600 text-2xl"
+              >
+                ×
+              </button>
+            </div>
+
+            {/* プレイリスト概要 */}
+            <div className="p-4 border-b border-gray-200">
+              <div className="flex justify-between items-center mb-3">
+                <div className="text-sm text-gray-600">
+                  合計時間:{" "}
+                  <span className="font-semibold text-gray-900">
+                    {playlist.reduce(
+                      (sum, p) => sum + (p.duration_min || 0),
+                      0
+                    )}
+                    分
+                  </span>
+                </div>
+                <div className="text-sm text-gray-600">
+                  コンテンツ:{" "}
+                  <span className="font-semibold text-gray-900">
+                    {playlist.length}件
+                  </span>
+                </div>
+              </div>
+
+              {/* 推し名表示 */}
+              <div className="mb-3">
+                <div className="text-sm text-gray-600 mb-2">関連推し:</div>
+                <div className="flex flex-wrap gap-2">
+                  {(() => {
+                    const allOshis = new Set<string>();
+                    playlist.forEach((item) => {
+                      if (item.related_oshis) {
+                        item.related_oshis.forEach((oshi) =>
+                          allOshis.add(oshi)
+                        );
+                      }
+                    });
+                    const oshiList = Array.from(allOshis);
+
+                    if (oshiList.length > 0) {
+                      return oshiList.slice(0, 8).map((oshi, index) => (
+                        <span
+                          key={index}
+                          className="px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium"
+                        >
+                          {oshi}
+                        </span>
+                      ));
+                    } else {
+                      return (
+                        <span className="text-sm text-gray-500 italic">
+                          Snowman 他
+                        </span>
+                      );
+                    }
+                  })()}
+                </div>
+              </div>
+            </div>
+
+            {/* プレイリスト詳細 */}
+            <div className="p-4 max-h-[40vh] overflow-auto">
+              <div className="space-y-2">
+                {playlist.slice(0, 10).map((p, index) => (
+                  <div
+                    key={p.content_id}
+                    className="p-2 bg-gray-50 rounded-lg border border-gray-200"
+                  >
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-gray-500 font-mono min-w-[30px]">
+                        #{index + 1}
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm font-medium text-gray-900 truncate">
+                          {p.title || `コンテンツ #${p.content_id}`}
+                        </div>
+                        <div className="text-xs text-gray-600">
+                          {toMinLabel(p.duration_min)}
+                          {p.lang && <span className="ml-2">({p.lang})</span>}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                ))}
+                {playlist.length > 10 && (
+                  <div className="text-center text-sm text-gray-500 py-2">
+                    他 {playlist.length - 10} 件...
+                  </div>
+                )}
+              </div>
+            </div>
+
+            {/* アクションボタン */}
+            <div className="p-4 border-t border-gray-200 bg-gray-50">
+              <div className="flex gap-3">
+                <button
+                  onClick={() => {
+                    setShowPlaylistConfirmPopup(false);
+                    setShowPlaylistModal(true);
+                  }}
+                  className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
+                >
+                  OK
+                </button>
+                <button
+                  onClick={() => setShowPlaylistConfirmPopup(false)}
+                  className="flex-1 py-3 bg-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-400 transition-colors"
+                >
+                  キャンセル
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* フッター */}
       <BottomNav />

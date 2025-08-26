@@ -47,34 +47,83 @@ export default function Home() {
   };
 
   useEffect(() => {
-    // 並列で呼び出し。失敗時はモックで補う
-    Promise.allSettled([Api.spots(), Api.contents({ limit: 10 })]).then(
-      (res) => {
-        const [s, c] = res;
+    // ユーザーの推し情報を取得してから、フォローしているアーティストのコンテンツを取得
+    const initializeData = async () => {
+      try {
+        // 1. ユーザーの推し情報を取得（一度だけ）
+        const oshiIds = await fetchUserOshis();
 
-        // スポット情報の処理
-        if (s.status === "fulfilled" && s.value?.items) {
-          console.log("✅ スポット取得成功:", s.value.items.length, "件");
-          setSpots(s.value.items);
-        } else {
-          console.warn("⚠️ スポット取得失敗、モックデータを使用");
+        // 2. スポット情報を取得（初期表示時のみ、推し情報は含めない）
+        try {
+          // フォロー推しフィルタリングを一時的に無効化（全スポット表示）
+          const defaultBbox = "35.65,139.69,35.67,139.72"; // 渋谷周辺
+          console.log("🏠 初期化時のBBox:", defaultBbox);
+          const spotsResponse = await Api.spots(defaultBbox, {
+            user_id: 1, // テスト用ユーザーID
+            followed_only: 1, // フォロー推しのみ
+            limit: 20,
+          });
+          if (spotsResponse?.items) {
+            console.log(
+              "✅ フォロー推しスポット取得成功:",
+              spotsResponse.items.length,
+              "件"
+            );
+            console.log(
+              "🏠 初期化時のスポット:",
+              spotsResponse.items.map((s) => ({ id: s.id, name: s.name }))
+            );
+            setSpots(spotsResponse.items);
+          } else {
+            console.warn("⚠️ フォロー推しスポット取得失敗、モックデータを使用");
+            setSpots(mockSpots);
+          }
+        } catch (error) {
+          console.warn(
+            "⚠️ フォロー推しスポット取得失敗、モックデータを使用:",
+            error
+          );
           setSpots(mockSpots);
         }
 
-        // コンテンツ情報の処理
-        if (c.status === "fulfilled" && c.value?.items) {
-          console.log("✅ コンテンツ取得成功:", c.value.items.length, "件");
-          console.log("📺 コンテンツ詳細:", c.value.items);
-          setContents(c.value.items);
-        } else {
-          console.warn("⚠️ コンテンツ取得失敗、モックデータを使用");
-          if (c.status === "rejected") {
-            console.error("コンテンツ取得エラー:", c.reason);
+        // 3. フォローしているアーティストのコンテンツを取得（必要な場合のみ）
+        if (oshiIds.length > 0) {
+          // テスト用ユーザーID（実際の実装では認証システムから取得）
+          const userId = 1;
+          try {
+            const userContentsResponse = await Api.userContents(userId, {
+              limit: 30,
+            });
+            if (userContentsResponse?.items) {
+              console.log(
+                "✅ マイコンテンツ取得成功:",
+                userContentsResponse.items.length,
+                "件"
+              );
+              setContents(userContentsResponse.items);
+            } else {
+              console.log("📝 マイコンテンツが見つかりません");
+              setContents([]);
+            }
+          } catch (error) {
+            console.warn("⚠️ マイコンテンツ取得失敗:", error);
+            setContents([]);
           }
-          setContents(mockContents);
+        } else {
+          console.log(
+            "📝 フォローしているアーティストがいないため、マイコンテンツは表示しません"
+          );
+          setContents([]);
         }
+      } catch (error) {
+        console.error("データ初期化エラー:", error);
+        // エラー時はモックデータを使用
+        setSpots(mockSpots);
+        setContents(mockContents);
       }
-    );
+    };
+
+    initializeData();
   }, []);
 
   // 地図の中心位置が変更された時にスポットを再取得（初期表示時と検索時のみ）
@@ -95,19 +144,53 @@ export default function Home() {
           lng + delta
         }`;
 
-        Api.spots(bbox)
-          .then((response) => {
-            if (response?.items) {
-              setSpots(response.items);
-            }
+        // デバウンス処理を追加（連続した呼び出しを防ぐ）
+        const timeoutId = setTimeout(() => {
+          Api.spots(bbox, {
+            user_id: 1, // テスト用ユーザーID
+            followed_only: 1, // フォロー推しのみ
+            limit: 20,
           })
-          .catch((error) => {
-            console.warn("スポット取得に失敗:", error);
-            // エラー時は既存のスポットを維持
-          });
+            .then((response) => {
+              if (response?.items) {
+                console.log(
+                  "🗺️ 地図中心変更によるフォロー推しスポット更新:",
+                  response.items.length,
+                  "件"
+                );
+                setSpots(response.items);
+              }
+            })
+            .catch((error) => {
+              console.warn("フォロー推しスポット取得に失敗:", error);
+              // エラー時は既存のスポットを維持
+            });
+        }, 500); // 500msのデバウンス
+
+        // クリーンアップ関数
+        return () => clearTimeout(timeoutId);
       }
     },
     []
+  );
+
+  // 地図のスポット更新時のコールバック
+  const handleSpotsUpdate = useCallback(
+    (updatedSpots: any[]) => {
+      console.log("🗺️ 地図からのスポット更新:", updatedSpots.length, "件");
+      console.log(
+        "🗺️ 更新されたスポット:",
+        updatedSpots.map((s) => ({
+          id: s.id,
+          name: s.name,
+          lat: s.lat,
+          lng: s.lng,
+        }))
+      );
+      console.log("🗺️ 現在のspots state:", spots?.length, "件");
+      setSpots(updatedSpots);
+    },
+    [spots]
   );
 
   return (
@@ -122,12 +205,17 @@ export default function Home() {
           <MapEmbed
             height="320px"
             rounded="1rem"
+            user_id={1} // テスト用ユーザーID
+            followed_only={1} // フォロー推しのみ表示
             onCenterChange={handleMapCenterChange}
+            onSpotsUpdate={handleSpotsUpdate}
           />
         </div>
 
         <SectionHeader
-          title="近くのスポット"
+          title={`近くのスポット${
+            spots && spots.length > 5 ? ` (${spots.length}件)` : ""
+          }`}
           onMore={() => setIsSpotsPopupOpen(true)}
         />
         <div className="max-w-md mx-auto px-4 space-y-3">
@@ -146,24 +234,38 @@ export default function Home() {
         </div>
 
         <SectionHeader
-          title="My推しコンテンツ"
+          title={`My推しコンテンツ${
+            contents && contents.length > 5 ? ` (${contents.length}件)` : ""
+          }`}
           icon="play"
           iconColor="text-teal-500"
           onMore={() => setIsContentsPopupOpen(true)}
         />
         <div className="max-w-md mx-auto px-4 space-y-3 mb-6">
-          {(contents ?? Array.from({ length: 3 }))
-            .slice(0, 5)
-            .map((c, idx) =>
-              c ? (
-                <ContentCard key={c.id} content={c} />
-              ) : (
-                <div
-                  key={idx}
-                  className="h-20 bg-white rounded-xl animate-pulse shadow-card"
-                />
-              )
-            )}
+          {contents && contents.length > 0 ? (
+            contents
+              .slice(0, 5) // ホーム画面では5件まで表示
+              .map((c) => <ContentCard key={c.id} content={c} />)
+          ) : contents === null ? (
+            // ローディング中
+            Array.from({ length: 3 }).map((_, idx) => (
+              <div
+                key={idx}
+                className="h-20 bg-white rounded-xl animate-pulse shadow-card"
+              />
+            ))
+          ) : (
+            // フォローしているアーティストがいない場合
+            <div className="bg-white rounded-xl p-6 text-center shadow-card">
+              <div className="text-gray-500 mb-2">🎵</div>
+              <div className="text-sm text-gray-600 mb-2">
+                フォローしているアーティストがいません
+              </div>
+              <div className="text-xs text-gray-400">
+                アーティストをフォローすると、ここにコンテンツが表示されます
+              </div>
+            </div>
+          )}
         </div>
       </main>
 
@@ -182,7 +284,9 @@ export default function Home() {
         contents={contents}
         isOpen={isContentsPopupOpen}
         onClose={() => setIsContentsPopupOpen(false)}
-        title="My推しコンテンツ一覧"
+        title={`My推しコンテンツ一覧${
+          contents && contents.length > 0 ? ` (${contents.length}件)` : ""
+        }`}
       />
     </div>
   );

@@ -367,6 +367,7 @@ export default function Page() {
   const [showRewardPopup, setShowRewardPopup] = useState(false);
   const [showPlaylistConfirmPopup, setShowPlaylistConfirmPopup] =
     useState(false);
+  const [showSpotsModal, setShowSpotsModal] = useState(false);
 
   // 後で実装予定: スポットソート方法の選択
   // const [spotSortMethod, setSpotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
@@ -2290,8 +2291,8 @@ export default function Page() {
                     className="w-full flex flex-col items-center gap-3"
                   >
                     {/* 所要時間と距離の表示 */}
-                    <div className="w-full flex items-center justify-between">
-                      <div className="text-lg font-semibold text-gray-900">
+                    <div className="w-full flex items-center">
+                      <div className="flex-1 text-center text-xl font-semibold text-gray-900">
                         {toMinLabel(r.duration_min)}（{r.distance_km.toFixed(1)}
                         km）
                       </div>
@@ -2300,7 +2301,7 @@ export default function Page() {
                       <button
                         onClick={proposePlaylist}
                         disabled={loadingPlaylist}
-                        className="px-4 py-3 bg-cyan-100 hover:bg-cyan-200 disabled:bg-cyan-50 text-gray-800 rounded-xl font-medium transition-colors flex flex-col items-center justify-center gap-1 min-w-[80px]"
+                        className="px-4 py-3 bg-cyan-100 hover:bg-cyan-200 disabled:bg-cyan-50 text-gray-800 rounded-xl font-medium transition-colors flex flex-col items-center justify-center gap-1 min-w-[80px] flex-shrink-0"
                         title="プレイリスト提案を表示"
                       >
                         <TbMusic size={20} />

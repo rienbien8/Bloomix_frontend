@@ -1831,56 +1831,14 @@ export default function Page() {
                     lng: result.location.longitude,
                   };
 
-                  // 目的地を設定
-                  handlePlaceSelection(result.name, coords, result.address);
-
-                  // 情報ウィンドウを表示
+                  // 情報ウィンドウを表示（ピンを押したときと同じ動き）
                   if (infoRef.current && mapRef.current) {
-                    // 現在地からの距離を計算
-                    let distanceText = "";
-                    if (currentLocation) {
-                      const distance =
-                        google.maps.geometry.spherical.computeDistanceBetween(
-                          new google.maps.LatLng(
-                            currentLocation.lat,
-                            currentLocation.lng
-                          ),
-                          new google.maps.LatLng(coords.lat, coords.lng)
-                        );
-                      if (distance > 1000) {
-                        distanceText = `距離: ${(distance / 1000).toFixed(
-                          1
-                        )}km`;
-                      } else {
-                        distanceText = `距離: ${Math.round(distance)}m`;
-                      }
-                    }
-
                     const content = `
                       <div style="min-width: 300px; max-width: 350px; padding: 15px; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;">
                         <div style="margin-bottom: 12px;">
                           <div style="font-weight: 700; color: #1a1a1a; font-size: 16px; margin-bottom: 6px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">
                             📍 ${result.name}
                           </div>
-                          ${
-                            result.address
-                              ? `<div style="color: #555; font-size: 12px; line-height: 1.4; margin-bottom: 6px; padding: 4px 8px; background: #f8f9fa; border-radius: 4px;">
-                                 🏠 ${result.address}
-                               </div>`
-                              : ""
-                          }
-                          <div style="color: #666; font-size: 11px; margin-bottom: 6px; padding: 4px 8px; background: #f1f3f4; border-radius: 4px;">
-                            📊 座標: ${coords.lat.toFixed(
-                              6
-                            )}, ${coords.lng.toFixed(6)}
-                          </div>
-                          ${
-                            distanceText
-                              ? `<div style="color: #0066cc; font-size: 11px; margin-bottom: 6px; padding: 4px 8px; background: #e3f2fd; border-radius: 4px; font-weight: 500;">
-                                 🚗 ${distanceText}
-                               </div>`
-                              : ""
-                          }
                         </div>
                         <button 
                           id="set-destination-btn"
@@ -1916,6 +1874,13 @@ export default function Page() {
                       );
                       if (setDestinationBtn) {
                         setDestinationBtn.addEventListener("click", () => {
+                          // 目的地を設定
+                          handlePlaceSelection(
+                            result.name,
+                            coords,
+                            result.address
+                          );
+
                           // 現在地から出発してルートを表示
                           if (currentLocation) {
                             setCenter(currentLocation);
@@ -2005,9 +1970,6 @@ export default function Page() {
                 </button>
               </div>
             ))}
-          </div>
-          <div className="mt-2 text-xs text-gray-500 text-center">
-            地図上の番号付きピンをクリックしても選択できます
           </div>
         </div>
       </div>
@@ -2117,74 +2079,6 @@ export default function Page() {
             </div>
           </div>
         </div>
-
-        {/* 沿線スポットリスト */}
-        {alongSpots.length > 0 && (
-          <div className="max-w-md mx-auto px-4 mb-4">
-            <h3 className="font-semibold text-gray-900 mb-3">
-              おすすめ推しスポット ({alongSpots.length}件)
-              {false && (
-                <span className="text-sm font-normal text-gray-500 ml-2">
-                  - {false ? "進行度順" : false ? "均等分布" : "バランス重視"}
-                </span>
-              )}
-            </h3>
-            <div className="space-y-2">
-              {alongSpotsWithOshis.map((s, index) => (
-                <div
-                  key={s.id}
-                  className={`flex items-center gap-3 p-3 bg-white rounded-lg shadow-sm border border-gray-200 transition-all ${
-                    isWaypointAdded(s) ? "opacity-50 grayscale" : ""
-                  }`}
-                >
-                  {/* サムネイル */}
-                  <div className="flex-shrink-0">
-                    {s.is_special === true ? (
-                      <img
-                        src="/HondaLogo.svg"
-                        alt="Honda"
-                        className="w-8 h-8"
-                      />
-                    ) : (
-                      <img
-                        src="/star_logo.svg"
-                        alt="Star"
-                        className="w-8 h-8"
-                      />
-                    )}
-                  </div>
-
-                  {/* 場所名と推し名 */}
-                  <div className="flex-1 min-w-0">
-                    <div className="font-medium text-gray-900 mb-1">
-                      {s.name}
-                    </div>
-                    <div className="text-sm text-gray-600">
-                      {s.oshiNames && s.oshiNames.length > 0 ? (
-                        <span>{s.oshiNames.join(", ")}</span>
-                      ) : (
-                        <span>推し情報がありません</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* 経由地に追加ボタン */}
-                  <button
-                    onClick={() => addWaypoint(s)}
-                    disabled={isWaypointAdded(s)}
-                    className={`px-3 py-1 text-white rounded-lg text-xs flex-shrink-0 transition-colors ${
-                      isWaypointAdded(s)
-                        ? "bg-gray-400 cursor-not-allowed"
-                        : "bg-blue-500 hover:bg-blue-600"
-                    }`}
-                  >
-                    {isWaypointAdded(s) ? "追加済み" : "経由地に追加"}
-                  </button>
-                </div>
-              ))}
-            </div>
-          </div>
-        )}
 
         {/* ルート選択カード */}
         {/* ルート表示カード */}

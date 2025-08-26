@@ -368,6 +368,7 @@ export default function Page() {
   const [showPlaylistConfirmPopup, setShowPlaylistConfirmPopup] =
     useState(false);
   const [showSpotsModal, setShowSpotsModal] = useState(false);
+  const [playlistConfirmed, setPlaylistConfirmed] = useState(false);
 
   // 後で実装予定: スポットソート方法の選択
   // const [spotSortMethod, setSpotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
@@ -2299,13 +2300,54 @@ export default function Page() {
 
                       {/* プレイリスト提案ボタン */}
                       <button
-                        onClick={proposePlaylist}
+                        onClick={() => {
+                          if (playlistConfirmed) {
+                            // プレイリスト設定済みの場合は直接表示
+                            setShowPlaylistConfirmPopup(true);
+                          } else if (playlist.length > 0) {
+                            // プレイリストがあるが未確認の場合は直接表示
+                            setShowPlaylistConfirmPopup(true);
+                          } else {
+                            // プレイリストがない場合は生成してポップアップ表示
+                            proposePlaylist();
+                            // プレイリスト生成完了後に直接コンテンツ一覧を表示
+                            setTimeout(() => {
+                              if (playlist.length > 0) {
+                                setShowPlaylistConfirmPopup(true);
+                              }
+                            }, 1000);
+                          }
+                        }}
                         disabled={loadingPlaylist}
-                        className="px-4 py-3 bg-cyan-100 hover:bg-cyan-200 disabled:bg-cyan-50 text-gray-800 rounded-xl font-medium transition-colors flex flex-col items-center justify-center gap-1 min-w-[80px] flex-shrink-0"
-                        title="プレイリスト提案を表示"
+                        className={`px-4 py-3 rounded-xl font-medium transition-colors flex flex-col items-center justify-center gap-1 min-w-[80px] flex-shrink-0 ${
+                          playlistConfirmed
+                            ? "bg-green-100 hover:bg-green-200 text-green-800"
+                            : "bg-cyan-100 hover:bg-cyan-200 disabled:bg-cyan-50 text-gray-800"
+                        }`}
+                        title={
+                          playlistConfirmed
+                            ? "プレイリスト設定済み"
+                            : "プレイリスト提案を表示"
+                        }
                       >
-                        <TbMusic size={20} />
-                        <span className="text-xs">プレイリスト提案</span>
+                        {loadingPlaylist ? (
+                          <>
+                            <div className="animate-spin rounded-full h-5 w-5 border-b-2 border-gray-800"></div>
+                            <span className="text-xs">生成中...</span>
+                          </>
+                        ) : playlistConfirmed ? (
+                          <>
+                            <TbMusic size={20} />
+                            <span className="text-xs">
+                              プレイリスト設定済み
+                            </span>
+                          </>
+                        ) : (
+                          <>
+                            <TbMusic size={20} />
+                            <span className="text-xs">プレイリスト提案</span>
+                          </>
+                        )}
                       </button>
                     </div>
 
@@ -2322,20 +2364,6 @@ export default function Page() {
                   </div>
                 ));
               })()}
-            </div>
-          </div>
-        )}
-
-        {/* プレイリスト読み込み中の表示 */}
-        {routes.length > 0 && loadingPlaylist && (
-          <div className="max-w-md mx-auto px-4 mb-4">
-            <div className="flex justify-center">
-              <div className="px-6 py-4 bg-purple-100 text-purple-800 rounded-lg border border-purple-200">
-                <span className="flex items-center gap-2 text-lg font-medium">
-                  <span className="text-2xl">♬</span>
-                  プレイリストを構築中...
-                </span>
-              </div>
             </div>
           </div>
         )}
@@ -2427,97 +2455,6 @@ export default function Page() {
                   </button>
                 </div>
               ))}
-            </div>
-          </div>
-        )}
-
-        {/* プレイリスト */}
-        {playlist.length > 0 && (
-          <div className="max-w-2xl mx-auto px-4 mb-4">
-            <h3 className="font-semibold text-gray-900 mb-3 flex items-center gap-2">
-              <span className="text-2xl">🎵</span>
-              <span className="text-black-600">おすすめプレイリスト</span>
-            </h3>
-
-            {/* プレイリスト全体像カード */}
-            <div className="p-4 bg-white rounded-xl shadow-lg border border-green-200 mb-3">
-              <div className="flex items-center justify-between mb-3">
-                <div className="flex items-center gap-2">
-                  {/* <span className="text-2xl">🎵</span>
-                  <span className="font-semibold text-gray-900">
-                    ドライブ用プレイリスト
-                  </span> */}
-                </div>
-                {/* <div className="text-sm text-green-600 font-medium">
-                  {playlist.length}件
-                </div> */}
-              </div>
-
-              {/* 推し名表示 */}
-              <div className="mb-3">
-                <div className="text-base font-bold text-gray-600 mb-2"></div>
-                <div className="flex flex-wrap gap-2">
-                  {(() => {
-                    // プレイリスト内のコンテンツから推し名を抽出
-                    const allOshis = new Set<string>();
-                    playlist.forEach((item) => {
-                      if (item.related_oshis) {
-                        item.related_oshis.forEach((oshi) =>
-                          allOshis.add(oshi)
-                        );
-                      }
-                    });
-
-                    const oshiList = Array.from(allOshis);
-
-                    if (oshiList.length > 0) {
-                      return oshiList.slice(0, 5).map((oshi, index) => (
-                        <span
-                          key={index}
-                          className="px-3 py-1 bg-green-100 text-green-800 rounded-full text-xs font-medium"
-                        >
-                          {oshi}
-                        </span>
-                      ));
-                    } else {
-                      return (
-                        <span className="text-sm text-gray-500 italic">
-                          Snowman 他
-                        </span>
-                      );
-                    }
-                  })()}
-                </div>
-              </div>
-
-              {/* 時間とコンテンツ数 */}
-              <div className="flex justify-between items-center mb-4">
-                <div className="text-sm text-gray-600">
-                  合計時間:{" "}
-                  <span className="font-semibold text-gray-900">
-                    {playlist.reduce(
-                      (sum, p) => sum + (p.duration_min || 0),
-                      0
-                    )}
-                    分
-                  </span>
-                </div>
-                <div className="text-sm text-gray-600">
-                  コンテンツ:{" "}
-                  <span className="font-semibold text-gray-900">
-                    {playlist.length}件
-                  </span>
-                </div>
-              </div>
-
-              {/* リストを表示ボタン */}
-              <button
-                onClick={() => setShowPlaylistConfirmPopup(true)}
-                className="w-full py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors flex items-center justify-center gap-2"
-              >
-                <span>📋</span>
-                リストを表示
-              </button>
             </div>
           </div>
         )}
@@ -2735,14 +2672,20 @@ export default function Page() {
                 <button
                   onClick={() => {
                     setShowPlaylistConfirmPopup(false);
-                    setShowPlaylistModal(true);
+                    // OKを押した場合は、プレイリスト設定済みにする
+                    setPlaylistConfirmed(true);
                   }}
                   className="flex-1 py-3 bg-green-600 text-white rounded-lg font-medium hover:bg-green-700 transition-colors"
                 >
                   OK
                 </button>
                 <button
-                  onClick={() => setShowPlaylistConfirmPopup(false)}
+                  onClick={() => {
+                    setShowPlaylistConfirmPopup(false);
+                    // キャンセルを押した場合は、プレイリストをクリアしてボタンを元の状態に戻す
+                    setPlaylist([]);
+                    setPlaylistConfirmed(false);
+                  }}
                   className="flex-1 py-3 bg-gray-300 text-gray-700 rounded-lg font-medium hover:bg-gray-400 transition-colors"
                 >
                   キャンセル

@@ -1980,7 +1980,7 @@ export default function Page() {
                   {/* 寄り道候補ボタン（一時的に非表示 - 自動表示のため） */}
                   {false && (
                     <button
-                      onClick={fetchAlongSpots}
+                      onClick={() => fetchAlongSpots()}
                       disabled={!routes.length}
                       aria-label="寄り道候補を表示"
                       className="px-3 py-2 rounded-full border border-gray-300 bg-white text-gray-700 text-sm shadow-sm hover:bg-gray-50 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-1"

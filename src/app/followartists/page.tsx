@@ -80,16 +80,45 @@ export default function FollowListPage() {
     }
   };
 
-  useEffect(() => {
-    fetchArtists();
-    const storedFollows = localStorage.getItem("follows");
-    if (storedFollows) {
-      try {
-        setFollows(JSON.parse(storedFollows));
-      } catch {
-        setFollows({});
+  // 現在のフォロー状態を取得
+  const fetchFollows = async () => {
+    try {
+      const userId = 1; // テスト用ユーザーID
+      const isLocal =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
+      const baseUrl = isLocal
+        ? "http://localhost:8000"
+        : "https://app-002-gen10-step3-2-node-oshima7.azurewebsites.net";
+
+      const response = await fetch(`${baseUrl}/api/v1/users/${userId}/oshis`);
+      if (response.ok) {
+        const data = await response.json();
+        const followingIds = data.following_oshi_ids || [];
+        const followsState: Record<string, boolean> = {};
+        followingIds.forEach((id: number) => {
+          followsState[id.toString()] = true;
+        });
+        setFollows(followsState);
+        console.log("フォロー状態を取得:", followsState);
+      }
+    } catch (error) {
+      console.error("フォロー状態の取得に失敗:", error);
+      // フォールバック: localStorageから取得
+      const storedFollows = localStorage.getItem("follows");
+      if (storedFollows) {
+        try {
+          setFollows(JSON.parse(storedFollows));
+        } catch {
+          setFollows({});
+        }
       }
     }
+  };
+
+  useEffect(() => {
+    fetchArtists();
+    fetchFollows();
   }, []);
 
   // 検索クエリが変更されたらAPIから再取得
@@ -115,9 +144,18 @@ export default function FollowListPage() {
       const isCurrentlyFollowing = follows[id];
       const userId = 1; // テスト用ユーザーID
 
+      // 環境に応じてAPIエンドポイントを切り替え
+      const isLocal =
+        window.location.hostname === "localhost" ||
+        window.location.hostname === "127.0.0.1";
+      const baseUrl = isLocal
+        ? "http://localhost:8000"
+        : "https://app-002-gen10-step3-2-node-oshima7.azurewebsites.net";
+      const apiUrl = `${baseUrl}/api/v1/users/${userId}/oshis/${id}`;
+
       if (isCurrentlyFollowing) {
         // フォロー解除
-        const response = await fetch(`/api/v1/users/${userId}/oshis/${id}`, {
+        const response = await fetch(apiUrl, {
           method: "DELETE",
         });
 
@@ -126,7 +164,7 @@ export default function FollowListPage() {
         }
       } else {
         // フォロー追加
-        const response = await fetch(`/api/v1/users/${userId}/oshis/${id}`, {
+        const response = await fetch(apiUrl, {
           method: "POST",
         });
 

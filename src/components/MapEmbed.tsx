@@ -12,11 +12,14 @@ type Props = {
   height?: string; // 例: "320px"
   rounded?: string; // 例: "1rem"
   showSpecialToggle?: boolean;
+  user_id?: number; // ユーザーID（フォロー推しフィルタリング用）
+  followed_only?: number; // フォロー推しのみ表示（0 or 1）
   onCenterChange?: (
     center: { lat: number; lng: number },
     reason: "initial" | "search" | "move"
   ) => void;
   onBBoxChange?: (bbox: string) => void; // 地図の表示範囲（BBox）が変更された時のコールバック
+  onSpotsUpdate?: (spots: any[]) => void; // スポット更新時のコールバック
 };
 
 async function apiGet<T>(
@@ -47,14 +50,16 @@ export default function MapEmbed({
   height = "320px",
   rounded = "1rem",
   showSpecialToggle = true,
+  user_id,
+  followed_only = 0,
   onCenterChange,
   onBBoxChange,
+  onSpotsUpdate,
 }: Props) {
   const wrapRef = useRef<HTMLDivElement | null>(null);
   const mapRef = useRef<google.maps.Map | null>(null);
   const infoRef = useRef<google.maps.InfoWindow | null>(null);
   const markersRef = useRef<google.maps.Marker[]>([]);
-  const currentLocationMarkerRef = useRef<google.maps.Marker | null>(null);
   const [mapsReady, setMapsReady] = useState(false);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState("読み込み中…");
@@ -130,23 +135,31 @@ export default function MapEmbed({
       if (idleListener) google.maps.event.removeListener(idleListener);
       markersRef.current.forEach((m) => m.setMap(null));
       markersRef.current = [];
-      // 現在地マーカーもクリーンアップ
-      if (currentLocationMarkerRef.current) {
-        currentLocationMarkerRef.current.setMap(null);
-        currentLocationMarkerRef.current = null;
-      }
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mapsReady, specialOnly]);
 
   async function loadSpots() {
+    console.log("🗺️ MapEmbed: loadSpots関数が呼び出されました");
     try {
-      if (!mapRef.current) return;
+      if (!mapRef.current) {
+        console.log("🗺️ MapEmbed: mapRef.currentがnullのため終了");
+        return;
+      }
       const bbox = mapToBBox(mapRef.current);
-      if (!bbox) return;
+      if (!bbox) {
+        console.log("🗺️ MapEmbed: bboxが取得できないため終了");
+        return;
+      }
       const c = mapRef.current.getCenter();
       const origin = c ? `${c.lat()},${c.lng()}` : undefined;
       setStatus("周辺スポット取得中…");
+      console.log("🗺️ MapEmbed: API呼び出し開始", {
+        bbox,
+        origin,
+        followed_only,
+        user_id,
+      });
 
       const data = await apiGet<{ count: number; items: any[] }>(
         "/api/v1/spots",
@@ -154,22 +167,30 @@ export default function MapEmbed({
           bbox,
           origin,
           is_special: specialOnly ? 1 : undefined,
-          limit: 10,
+          user_id: followed_only ? user_id : undefined,
+          followed_only: followed_only ? 1 : undefined,
+          limit: 20,
         }
       );
 
-      // デバッグ: APIレスポンスを確認
-      console.log("MapEmbed APIレスポンス:", data);
-      console.log(
-        "Homeスポットデータ:",
-        data.items.map((s) => ({
-          id: s.id,
-          name: s.name,
-          is_special: s.is_special,
-          type: typeof s.is_special,
-          value: s.is_special,
-        }))
-      );
+      console.log("🗺️ MapEmbed: APIレスポンス", {
+        count: data.count,
+        itemsLength: data.items.length,
+      });
+
+      // スポット更新コールバックを呼び出し
+      if (onSpotsUpdate) {
+        console.log(
+          "🗺️ MapEmbed: onSpotsUpdateコールバックを呼び出し",
+          data.items.length,
+          "件"
+        );
+        onSpotsUpdate(data.items);
+      } else {
+        console.log(
+          "🗺️ MapEmbed: onSpotsUpdateコールバックが設定されていません"
+        );
+      }
 
       // 既存マーカー掃除
       markersRef.current.forEach((m) => m.setMap(null));
@@ -179,24 +200,14 @@ export default function MapEmbed({
       data.items.forEach((s) => {
         // is_special=1のスポットにはHondaLogo.svgを使用
         let icon = undefined;
-        console.log(`スポット ${s.name} (ID: ${s.id}) のis_special判定:`, {
-          value: s.is_special,
-          type: typeof s.is_special,
-          isEqualToOne: s.is_special === 1,
-          isTruthy: Boolean(s.is_special),
-        });
 
         if (Boolean(s.is_special)) {
-          console.log(`✅ ${s.name} にHondaLogo.svgを設定`);
           icon = {
             url: "/HondaLogo.svg",
             scaledSize: new google.maps.Size(28, 28),
             anchor: new google.maps.Point(16, 16),
           };
         } else {
-          console.log(
-            `❌ ${s.name} はstar_logo.svg（is_special: ${s.is_special}）`
-          );
           icon = {
             url: "/star_logo.svg",
             scaledSize: new google.maps.Size(32, 32),
@@ -224,56 +235,44 @@ export default function MapEmbed({
 
             const html = `
               <div style="max-width:280px">
-                <div style="font-weight:700;font-size:14px;margin-bottom:6px;color:#1a1a1a">${escapeHtml(
-                  detail.name || ""
-                )}</div>
+                <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+                  <div style="font-weight:700;font-size:14px;color:#1a1a1a">${escapeHtml(
+                    detail.name || ""
+                  )}</div>
+                  <button 
+                    onclick="window.location.href='/drive?lat=${s.lat}&lng=${
+              s.lng
+            }&name=${encodeURIComponent(
+              detail.name || ""
+            )}&address=${encodeURIComponent(detail.address || "")}'"
+                    style="background:#0068b7;color:white;border:none;border-radius:12px;padding:4px 8px;font-size:11px;cursor:pointer;white-space:nowrap"
+                  >
+                    ここへ行く
+                  </button>
+                </div>
                 <div style="font-size:12px;color:#555;margin-bottom:6px">${escapeHtml(
                   detail.address || ""
                 )}</div>
+                ${
+                  oshis.items && oshis.items.length > 0
+                    ? `<div style="margin-bottom:6px">
+                        ${oshis.items
+                          .map(
+                            (o: any) =>
+                              `<span style="display:inline-block;background:#f0f0f0;color:#333;padding:2px 6px;margin:1px;border-radius:4px;font-size:11px">${escapeHtml(
+                                o.name
+                              )}</span>`
+                          )
+                          .join("")}
+                      </div>`
+                    : ""
+                }
                 ${
                   detail.description
                     ? `<div style="font-size:12px;color:#333;margin-bottom:6px;line-height:1.4">${escapeHtml(
                         detail.description || ""
                       )}</div>`
                     : ""
-                }
-                <div style="font-size:12px;color:#333;margin-bottom:6px">距離: ${
-                  s.distance_km ?? "-"
-                } km</div>
-                <div style="font-size:12px;color:#333;margin-bottom:6px">タイプ: ${escapeHtml(
-                  s.type || "-"
-                )}${s.is_special ? "（特殊）" : ""}</div>
-                ${
-                  oshis.items && oshis.items.length > 0
-                    ? `
-                <div style="font-size:12px;color:#111;margin-top:8px;margin-bottom:4px;font-weight:600">関連推し</div>
-                <div style="margin-bottom:8px">
-                  ${oshis.items
-                    .map(
-                      (o: any) =>
-                        `<span style="display:inline-block;background:#f0f0f0;color:#333;padding:2px 6px;margin:1px;border-radius:4px;font-size:11px">${escapeHtml(
-                          o.name
-                        )}</span>`
-                    )
-                    .join("")}
-                </div>
-                `
-                    : ""
-                }
-                <div style="font-size:12px;color:#111;margin-top:8px;margin-bottom:4px;font-weight:600">関連コンテンツ（<=20分）</div>
-                ${
-                  (contents.items || [])
-                    .slice(0, 3)
-                    .map(
-                      (c: any) =>
-                        `<div style='font-size:12px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;margin-bottom:2px'>・${escapeHtml(
-                          c.title || ""
-                        )}${
-                          c.duration_min ? `（${c.duration_min}分）` : ""
-                        }</div>`
-                    )
-                    .join("") ||
-                  '<div style="font-size:12px;color:#888">なし</div>'
                 }
               </div>`;
             infoRef.current!.setContent(html);
@@ -528,14 +527,18 @@ export default function MapEmbed({
                   mapRef.current!.setCenter(position);
                   mapRef.current!.setZoom(13);
 
-                  // 既存の現在地マーカーを削除
-                  if (currentLocationMarkerRef.current) {
-                    currentLocationMarkerRef.current.setMap(null);
+                  // 現在地変更をコールバックで通知
+                  if (onCenterChange) {
+                    onCenterChange(position, "move");
                   }
 
-                  // 新しい現在地マーカーを作成・表示
-                  currentLocationMarkerRef.current =
-                    createCurrentLocationMarker(position, mapRef.current!);
+                  // 現在地周辺のBBoxを通知
+                  if (onBBoxChange) {
+                    const bbox = mapToBBox(mapRef.current);
+                    if (bbox) {
+                      onBBoxChange(bbox);
+                    }
+                  }
 
                   // 現在地移動後は再検索ボタンを非表示
                   setShowRefreshButton(false);
@@ -580,26 +583,4 @@ function escapeHtml(s: any) {
         } as any
       )[m])
   );
-}
-
-// 現在地マーカーを作成する関数
-function createCurrentLocationMarker(
-  position: { lat: number; lng: number },
-  map: google.maps.Map
-): google.maps.Marker {
-  const google = (window as any).google as typeof window.google;
-  return new google.maps.Marker({
-    position,
-    map,
-    icon: {
-      path: google.maps.SymbolPath.CIRCLE,
-      scale: 8,
-      fillColor: "#4285F4", // Google Blue
-      fillOpacity: 1,
-      strokeColor: "#FFFFFF",
-      strokeWeight: 2,
-    },
-    title: "現在地",
-    zIndex: 1000, // 他のマーカーより前面に表示
-  });
 }

@@ -65,11 +65,11 @@ export default function SpotCard({ spot }: Props) {
       <button
         className="text-xs text-white rounded-full px-3 py-1 shrink-0"
         style={{
-          backgroundColor: spot.is_special ? "#EC4899" : "#38BDF8",
+          backgroundColor: spot.is_special ? "#0068b7" : "#0068b7",
         }}
         onClick={handleSetDestination}
       >
-        目的地に設定
+        ここに行く
       </button>
     </div>
   );

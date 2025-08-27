@@ -51,9 +51,26 @@ export default function ContentsPopup({
                 <ContentCard key={content.id} content={content} />
               ))}
             </div>
+          ) : contents === null ? (
+            // ローディング中
+            <div className="space-y-3">
+              {Array.from({ length: 5 }).map((_, idx) => (
+                <div
+                  key={idx}
+                  className="h-20 bg-gray-100 rounded-xl animate-pulse"
+                />
+              ))}
+            </div>
           ) : (
-            <div className="text-center py-8 text-gray-500">
-              コンテンツがありません
+            // フォローしているアーティストがいない場合
+            <div className="text-center py-8">
+              <div className="text-gray-500 mb-4 text-4xl">🎵</div>
+              <div className="text-gray-600 mb-2">
+                フォローしているアーティストがいません
+              </div>
+              <div className="text-sm text-gray-400">
+                アーティストをフォローすると、ここにコンテンツが表示されます
+              </div>
             </div>
           )}
         </div>

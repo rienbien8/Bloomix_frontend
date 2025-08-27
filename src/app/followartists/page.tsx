@@ -84,14 +84,13 @@ export default function FollowListPage() {
   const fetchFollows = async () => {
     try {
       const userId = 1; // テスト用ユーザーID
-      const isLocal =
-        window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1";
-      const baseUrl = isLocal
-        ? "http://localhost:8000"
-        : "https://app-002-gen10-step3-2-node-oshima7.azurewebsites.net";
 
-      const response = await fetch(`${baseUrl}/api/v1/users/${userId}/oshis`);
+      // 環境変数から取得、なければデフォルト値
+      const backendUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+      const apiUrl = `${backendUrl}/api/v1/users/${userId}/oshis`;
+
+      const response = await fetch(apiUrl);
       if (response.ok) {
         const data = await response.json();
         const followingIds = data.following_oshi_ids || [];
@@ -144,14 +143,10 @@ export default function FollowListPage() {
       const isCurrentlyFollowing = follows[id];
       const userId = 1; // テスト用ユーザーID
 
-      // 環境に応じてAPIエンドポイントを切り替え
-      const isLocal =
-        window.location.hostname === "localhost" ||
-        window.location.hostname === "127.0.0.1";
-      const baseUrl = isLocal
-        ? "http://localhost:8000"
-        : "https://app-002-gen10-step3-2-node-oshima7.azurewebsites.net";
-      const apiUrl = `${baseUrl}/api/v1/users/${userId}/oshis/${id}`;
+      // 環境変数から取得、なければデフォルト値
+      const backendUrl =
+        process.env.NEXT_PUBLIC_API_BASE_URL || "http://127.0.0.1:8000";
+      const apiUrl = `${backendUrl}/api/v1/users/${userId}/oshis/${id}`;
 
       if (isCurrentlyFollowing) {
         // フォロー解除

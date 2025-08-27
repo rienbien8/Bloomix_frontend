@@ -89,7 +89,7 @@ export default function RewardPopup({ isOpen, onClose }: Props) {
             新しいコンテンツを獲得しました
             <br />
             <span className="font-semibold" style={{ color: "#FF9900" }}>
-              My推しコンテンツ
+              Myコンテンツ
             </span>
             から確認できます
           </p>

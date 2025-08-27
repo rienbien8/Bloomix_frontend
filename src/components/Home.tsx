@@ -14,6 +14,8 @@ import { Api } from "../modules/api";
 import { mockSpots, mockContents } from "../modules/mock";
 import type { Spot, Content } from "../modules/types";
 import MapEmbed from "./MapEmbed";
+import PWAInstaller from "./PWAInstaller";
+import OfflineDetector from "./OfflineDetector";
 
 export default function Home() {
   const [spots, setSpots] = useState<Spot[] | null>(null);
@@ -230,6 +232,12 @@ export default function Home() {
           contents && contents.length > 0 ? ` (${contents.length}件)` : ""
         }`}
       />
+
+      {/* PWAインストーラー */}
+      <PWAInstaller />
+
+      {/* オフライン検出器 */}
+      <OfflineDetector />
     </div>
   );
 }

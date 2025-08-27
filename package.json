@@ -6,7 +6,9 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "generate-icons": "node scripts/generate-icons.js",
+    "pwa:build": "npm run generate-icons && npm run build"
   },
   "dependencies": {
     "@googlemaps/js-api-loader": "^1.16.10",
@@ -24,6 +26,7 @@
     "eslint": "9.34.0",
     "eslint-config-next": "15.5.2",
     "postcss": "^8.4.38",
+    "sharp": "^0.33.5",
     "tailwindcss": "^3.4.7",
     "typescript": "^5.5.4"
   }

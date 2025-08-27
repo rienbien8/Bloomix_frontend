@@ -370,8 +370,20 @@ export default function Page() {
   const [showSpotsModal, setShowSpotsModal] = useState(false);
   const [playlistConfirmed, setPlaylistConfirmed] = useState(false);
 
+  // プレイリスト生成完了後に自動的にポップアップを表示
+  useEffect(() => {
+    if (
+      playlist.length > 0 &&
+      !playlistConfirmed &&
+      !showPlaylistConfirmPopup
+    ) {
+      // プレイリストが生成され、まだ確認されていない場合にポップアップを表示
+      setShowPlaylistConfirmPopup(true);
+    }
+  }, [playlist, playlistConfirmed, showPlaylistConfirmPopup]);
+
   // 後で実装予定: スポットソート方法の選択
-  // const [spotSortMethod, setSpotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
+  // const [spotSortMethod] = useState<"default" | "progress" | "distributed" | "balanced">("default");
 
   const selectedRouteObj = routes.find((r) => r.type === selectedRoute) || null;
 
@@ -2300,7 +2312,7 @@ export default function Page() {
 
                       {/* プレイリスト提案ボタン */}
                       <button
-                        onClick={() => {
+                        onClick={async () => {
                           if (playlistConfirmed) {
                             // プレイリスト設定済みの場合は直接表示
                             setShowPlaylistConfirmPopup(true);
@@ -2308,21 +2320,15 @@ export default function Page() {
                             // プレイリストがあるが未確認の場合は直接表示
                             setShowPlaylistConfirmPopup(true);
                           } else {
-                            // プレイリストがない場合は生成してポップアップ表示
-                            proposePlaylist();
-                            // プレイリスト生成完了後に直接コンテンツ一覧を表示
-                            setTimeout(() => {
-                              if (playlist.length > 0) {
-                                setShowPlaylistConfirmPopup(true);
-                              }
-                            }, 1000);
+                            // プレイリストがない場合は生成のみ（useEffectで自動的にポップアップ表示）
+                            await proposePlaylist();
                           }
                         }}
                         disabled={loadingPlaylist}
                         className={`px-4 py-3 rounded-xl font-medium transition-colors flex flex-col items-center justify-center gap-1 min-w-[80px] flex-shrink-0 ${
                           playlistConfirmed
-                            ? "bg-green-100 hover:bg-green-200 text-green-800"
-                            : "bg-cyan-100 hover:bg-cyan-200 disabled:bg-cyan-50 text-gray-800"
+                            ? "bg-green-500 text-white cursor-pointer shadow-inner"
+                            : "bg-cyan-100 hover:bg-cyan-200 disabled:bg-cyan-50 text-gray-800 shadow-md"
                         }`}
                         title={
                           playlistConfirmed
@@ -2652,7 +2658,11 @@ export default function Page() {
                         </div>
                         <div className="text-xs text-gray-600">
                           {toMinLabel(p.duration_min)}
-                          {p.lang && <span className="ml-2">({p.lang})</span>}
+                          {p.related_oshis && p.related_oshis.length > 0 && (
+                            <span className="ml-2">
+                              ({p.related_oshis.join(", ")})
+                            </span>
+                          )}
                         </div>
                       </div>
                     </div>
